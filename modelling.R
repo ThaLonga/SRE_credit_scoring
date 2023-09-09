@@ -34,8 +34,13 @@ plot(g)
 AUC <- g$auc
 #0.7973
 
+
 #PG
 
+#𝐺𝑖𝑛𝑖=2*partial 𝐴𝑈𝐶/(a+b)(b-a) − 1
+
+(2*auc(good ~ prob, data = as.data.frame(xpreds), partial.auc = c(0,0.5))/((0+0.5)*(0.5-0)))-1
+2*(AUC-0.5)
 #BS
 #accuracy: closer to 0 = better (1/N)*sum((f-o)²)
 
