@@ -1,0 +1,97 @@
+Function Signature and Parameters
+R
+Copy code
+gpe_earth <- function(
+  ..., degree = 3, nk = 8, normalize = TRUE, 
+  ntrain = 100, learnrate = 0.1,
+  cor_thresh = 0.99){
+  # function body
+}
+The function gpe_earth is defined with several parameters:
+
+...: Ellipsis, which allows the function to take additional arguments.
+degree: The degree of interactions in the basis functions.
+nk: The number of knots for the spline term in the basis functions.
+normalize: A logical flag indicating whether to normalize the basis functions.
+ntrain: The number of training iterations.
+learnrate: The learning rate for the gradient boosting algorithm.
+cor_thresh: Threshold for correlation between basis functions; if set, basis functions with a correlation above this threshold will be excluded.
+Function Definition
+R
+Copy code
+out <- function(formula, data, weights, sample_func, verbose, family, ...){
+  # function body
+}
+The out function is defined within gpe_earth. It takes several arguments, including the formula specifying the model, data containing the dataset, weights for sampling, sample_func for subsampling, verbose for controlling verbosity, family indicating the type of regression (e.g., "binomial" for logistic regression), and ... for additional arguments.
+
+Setup
+R
+Copy code
+n <- nrow(data)
+old <- getOption("contrasts")
+on.exit(options(contrasts = old))
+options(contrasts = c("contr.treatment", "contr.treatment"))
+mf <- model.frame(formula, data = data)
+mt <- attr(mf, "terms")
+x <- model.matrix(mt, mf)
+y <- y_learn <- model.response(mf)
+n: Number of rows in the dataset.
+old: Saving the current contrast options.
+on.exit: Ensures that options are restored even if an error occurs or the function is exited.
+options(contrasts = c("contr.treatment", "contr.treatment")): Setting contrast options to treatment contrasts.
+mf: Model frame derived from the formula and data.
+mt: Model terms extracted from the model frame.
+x: Model matrix derived from the model terms and model frame.
+y and y_learn: Response variable for the model.
+Handling Factor Terms
+R
+Copy code
+dataClass <- attr(mt, "dataClasses")[(1 + attr(mt, "response")):length(attr(mt, "dataClasses"))]
+factor_terms <- which(dataClass %in% c("factor", "ordered"))
+n_factors <- length(factor_terms)
+factor_terms <- names(dataClass)[factor_terms]
+
+if(n_factors > 0){
+  # ... (factor handling)
+}
+dataClass: Class of variables in the model.
+factor_terms: Indices of factor or ordered variables.
+Handling factor terms if present, including setting up regular expressions for factor terms.
+Logistic Regression Handling
+R
+Copy code
+if(family == "binomial"){
+  # ... (logistic regression handling)
+}
+Handling specific steps for logistic regression, including setting up initial values for eta and y_learn.
+Training Loop
+R
+Copy code
+for(i in 1:ntrain){
+  # ... (training loop)
+}
+Iterating through the specified number of training iterations.
+Basis Functions
+R
+Copy code
+# ... (basis functions computation and formatting)
+Computing basis functions using the earth package for the specified number of iterations.
+Correlation Thresholding
+R
+Copy code
+if(!is.null(cor_thresh)){
+  # ... (correlation thresholding)
+}
+Checking and excluding basis functions based on correlation threshold if provided.
+Return
+R
+Copy code
+basis_funcs
+Returning the computed and filtered basis functions.
+This function essentially performs a gradient boosting approach using the earth package, and it allows for specific handling of logistic regression and correlation thresholding. The primary output is a set of basis functions that can be used in modeling.
+
+
+
+
+
+

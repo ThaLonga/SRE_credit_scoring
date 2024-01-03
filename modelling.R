@@ -1,9 +1,42 @@
 # MODELLING
+
+######
+#setup
+######
+#import
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
-p_load(glmnet, tidyverse, xgboost, DiagrammeR, stringr, tictoc, parallel, pROC)
+p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, parallel, pROC, earth, Matrix, pre, caret)
+source("hyperparameters.R")
 
 #setup cluster
 cl <- makeCluster(detectCores()-1)
+
+#evaluation function for caret tuning from pre package
+BigSummary <- function (data, lev = NULL, model = NULL) {
+  brscore <- try(mean((data[, lev[2]] - ifelse(data$obs == lev[2], 1, 0)) ^ 2),
+                 silent = TRUE)
+  rocObject <- try(pROC::roc(ifelse(data$obs == lev[2], 1, 0), data[, lev[2]],
+                             direction = "<", quiet = TRUE), silent = TRUE)
+  if (inherits(brscore, "try-error")) brscore <- NA
+  rocAUC <- if (inherits(rocObject, "try-error")) {
+    NA
+  } else {
+    rocObject$auc
+  }
+  return(c(AUCROC = rocAUC, Brier = brscore))
+}
+
+# return boolean vector TRUE for numerical columns (not boolean)
+get_splineworthy_columns <- function(X) {
+  return(lapply(X, n_distinct)>5)
+}
+
+######
+
+#auc, BS, 
+metric = "auc"
+metric_caret = ifelse(metric=="auc", "ROC", metric)
+n_folds = 5
 
 ########################
 # Loading & partitioning
@@ -15,36 +48,110 @@ load("data/y_german.Rda")
 
 set.seed(123)
 train_indices <- sample(1:nrow(x), 0.8 * nrow(x))
-x_train <- x[train_indices, ]
-x_test <- x[-train_indices, ]
-y_train <- y[train_indices, ]
-y_test <- y[-train_indices, ]
+x_train <- (x[train_indices, ])
+x_test <- (x[-train_indices, ])
+y_train <- (y[train_indices, ])
+y_test <- (y[-train_indices, ])
+
+
+##### MOVE TO PREPROCESSING
+y_train = y_train %>% as.factor()
+y_test = y_test %>% as.factor()
+
+train = as_tibble(cbind(x_train, y_train)) %>% rename(label = y_train)
+test = as_tibble(cbind(x_test, y_test)) %>% rename(label = y_test)
+train$label = as.factor(train$label)
+test$label = as.factor(test$label)
 
 #####################
-# Logistic regression
+#####################
+# Linear models
+#####################
 #####################
 
+#####################
+# LR
+#####################
 
-## Ridge Regression to create the Adaptive Weights Vector
+LR_model_final = glm(label ~., data = train, family = "binomial")
+
+#####################
+# LR-R
+#####################
+
+LR_R_ctrl = trainControl(method = "cv", number = n_folds, classProbs = TRUE, summaryFunction = twoClassSummary)
+
+train = train  %>% 
+        mutate(label = factor(label, 
+                        labels = make.names(levels(label))))
+
 set.seed(123)
-cv.ridge <- cv.glmnet(x_train, y_train, family='binomial', alpha=0, parallel=TRUE, standardize=TRUE)
+LRR_model <- train(label ~., data = train,  method = "glmnet", trControl = LR_R_ctrl, metric = metric_caret,
+                   tuneGrid = expand.grid(alpha = hyperparameters_LR_R$alpha,lambda = hyperparameters_LR_R$lambda),
+                   allowParallel=TRUE)
+LRR_model_final = LRR_model$finalModel
+#best tune: alpha = 0.1, lambda = 0.1
+#coef(LRR_model$finalModel, LRR_model$bestTune$lambda)
 
-# weights = 1/absolute value of ridge coefficients
-w3 <- 1/abs(matrix(coef(cv.ridge, s=cv.ridge$lambda.min)
-                   [, 1][2:(ncol(x_train)+1)] ))^1 ## Using gamma = 1
-w3[w3[,1] == Inf] <- 999999999 ## Replacing values estimated as Infinite for 999999999
+###################
+##### GAM
+###################
 
-# adaptive Lasso
-set.seed(123)
-cv.lasso <- cv.glmnet(x_train, y_train, family='binomial', alpha=1, parallel=TRUE, standardize=TRUE, type.measure='auc', penalty.factor=w3)
+smooth_vars = colnames(train)[get_numeric_columns(train)]
+formula <- as.formula(
+  stringr::str_sub(paste("label ~", 
+        paste(ifelse(names(train) %in% smooth_vars, "s("  , ""),
+              names(train),
+              ifelse(names(train) %in% smooth_vars, ", k=4)",""),
+              collapse = " + ")
+  ), 0, -10)
+)
 
-####
-# evaluation
-####
+gamtest <- gam(formula, family = "binomial", data = train) #degrees freedom error
+saveRDS(gamtest)
+###################
+##### MARS
+###################
+
+mars_model = earth(y_train ~ x_train)
+mars_model$cuts
+
 ###################
 #####Rule ensembles
 ###################
-#adaptive lasso
+
+fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 1,
+                           classProbs = TRUE, ## get probabilities, not class labels
+                           summaryFunction = BigSummary, verboseIter = TRUE)
+
+#ADJUST
+preGrid <- getModelInfo("pre")[[1]]$grid(
+  maxdepth = 2L:3L,
+  learnrate = c(.01, .05, .1),
+  penalty.par.val = c("lambda.1se", "lambda.min"),
+  sampfrac = c(0.5, 0.75, 1.0))
+
+
+RE_model <- pre(label ~ .,
+               family = binomial,
+               data = train,
+               verbose = TRUE)
+
+RE_fit <- fit_xy(RE_model, x_train, y_train)
+
+cvpre(RE_model,
+      k = 3,
+      verbose = TRUE)
+
+#AUC
+xpreds <- x_test
+xpreds$good <- y_test
+prob=predict(RE_model, newdata = data.frame(x_test), type=c("response"))
+xpreds$prob<-data.frame(prob)
+g <- roc(unlist(good) ~ unlist(prob), data = xpreds)
+plot(g)    
+AUC <- g$auc
+#
 
 ######
 #SRE
@@ -71,16 +178,51 @@ for(c in 1:ncol(x_train)) {
 }
 
 
-
+SRE_rules_splines() <- function(nrounds, )
 #####
 # rules
 #####
 # convert the train and test data into xgboost matrix type.
 xgboost_train = xgb.DMatrix(data=x_train, label=y_train)
 
-xgb_model <- xgboost(data = xgboost_train, max.depth = 2, nrounds = 20)
+xgb_model <- xgboost(data = xgboost_train, max.depth = 3, nrounds = 20)
 
 tree_dump <- xgb.dump(xgb_model)
+
+
+
+
+#####
+#ALTERNATIVE (better)
+xgb.plot.tree(model = xgb_model, trees = 0)
+
+model_trees <- xgb.model.dt.tree(model = xgb_model)
+model_trees <- as_tibble(model_trees[model_trees$Feature!="Leaf"]) %>% select(Tree, Node, Feature, Split)
+model_trees %>% filter(Tree==0)
+model_trees_array <- split(model_trees, model_trees$Tree)
+
+
+# Function to generate rules
+generate_rules <- function(tree_data, node) {
+  current_node <- subset(tree_data, Node == node)
+  rule <- paste(current_node$Node, collapse = "-")
+  if (nrow(current_node) > 0) {
+    left_child <- current_node$Node[1] * 2 + 1
+    right_child <- current_node$Node[1] * 2 + 2
+    rule_left <- generate_rules(tree_data, left_child)
+    rule_right <- generate_rules(tree_data, right_child)
+    return(c(rule, rule_left, rule_right))
+  } else {
+    return(rule)
+  }
+}
+
+# Generate rules starting from the root node (0)
+rules <- generate_rules((model_trees %>% filter(Tree==0)), 0)
+
+# Print the rules
+print(rules)
+#####
 
 
 # Parse the tree dump to extract rules
@@ -126,7 +268,6 @@ extract_rules <- function(tree_dump) {
 
 # Extract rules from the tree dump
 extracted_rules <- extract_rules(tree_dump) #now create features
-
 rule_matrix <- matrix(nrow = length(extracted_rules), ncol = 3)
 for(l in 1:length(extracted_rules)) {
   if(grepl("tree", extracted_rules[l])) {
@@ -141,8 +282,8 @@ for(l in 1:length(extracted_rules)) {
 
 
 #add rules to basetable
-basetable <- data.frame(x_train)
-basetable_test <- data.frame(x_test)
+basetable <- data.frame(1:800)
+basetable_test <- data.frame(1:800)
 
 #names are given as such: "factor_10_<_0.5_and_factor_1_<_22.5
 c<-1
@@ -161,12 +302,25 @@ for(i in which(is.na(rule_matrix[,2]))) {
     }
   c<-c+1
 }
+
+basetable = basetable[,-1]
+basetable_test = basetable_test[,-1]
+
+#scale
+supports_rules <- colMeans(basetable)
+stdevs_rules <- sqrt(supports_rules*(1-supports_rules))
+basetable <- sweep(basetable, 2, stdevs_rules, FUN = "/")
+basetable_test <- sweep(basetable_test, 2, stdevs_rules, FUN = "/")
+
+x_train_stdevs <- sapply(x_train, sd)
+x_train_scaled = 0.4*sweep(x_train, 2, x_train_stdevs, FUN = "/")
+x_test_scaled = 0.4*sweep(x_test, 2, x_train_stdevs, FUN = "/")
+
 #for every 4 rows: 
 #row 1: tree index
 #row 2: rule 1
 #row 2 and row 3: rule 2
 #row 2 and row 4: rule 3
-
 
 # Plot specific decision tree
 #xgb.plot.tree(model = xgb_model, trees = 0)
@@ -191,6 +345,11 @@ for(i in get_numeric_columns(x_train)) {
 
 basetable_num <- data.frame(sapply(basetable, as.numeric))
 basetable_num_test <- data.frame(sapply(basetable_test, as.numeric))
+
+#scaling
+basetable
+
+
 
 ## Ridge Regression to create the Adaptive Weights Vector
 set.seed(123)
