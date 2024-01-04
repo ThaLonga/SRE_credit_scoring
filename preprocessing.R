@@ -32,5 +32,5 @@ y <- german_with_dummies %>%
 
 gold <- german_with_dummies
 
-save(x, file = "C:/Users/simon/Documents/GitHub/Thesis/data/x_german.Rda")
-save(y, file = "C:/Users/simon/Documents/GitHub/Thesis/data/y_german.Rda")
+save(x, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/x_german.Rda")
+save(y, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/y_german.Rda")

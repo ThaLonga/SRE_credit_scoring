@@ -5,7 +5,7 @@
 ######
 #import
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
-p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, parallel, pROC, earth, Matrix, pre, caret)
+p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, parallel, pROC, earth, Matrix, pre, caret, parsnip)
 source("hyperparameters.R")
 
 #setup cluster
@@ -43,8 +43,8 @@ n_folds = 5
 ########################
 
 #Choose data to load
-load("data/x_german.Rda")
-load("data/y_german.Rda")
+load("data/GOLD/x_german.Rda")
+load("data/GOLD/y_german.Rda")
 
 set.seed(123)
 train_indices <- sample(1:nrow(x), 0.8 * nrow(x))
@@ -74,7 +74,7 @@ test$label = as.factor(test$label)
 #####################
 
 LR_model_final = glm(label ~., data = train, family = "binomial")
-
+saveRDS(LR_model_final, file="./models/LR_model_final.rds")
 #####################
 # LR-R
 #####################
@@ -92,6 +92,28 @@ LRR_model <- train(label ~., data = train,  method = "glmnet", trControl = LR_R_
 LRR_model_final = LRR_model$finalModel
 #best tune: alpha = 0.1, lambda = 0.1
 #coef(LRR_model$finalModel, LRR_model$bestTune$lambda)
+
+
+###################
+##### LDA
+###################
+
+# Correlation based feature selection
+corr_matrix <- cor(cbind(x_train, y_train))
+
+#correlated features:
+(sum(abs(corr_matrix)>0.8)-49)
+#GC: 2 -> HousingA153 and PropertyA124
+cor(cbind(train$HousingA153, train$PropertyA124, y_train))
+
+train_DA <- train %>% select(-"HousingA153")
+#AC:
+
+
+###################
+##### QDA
+###################
+
 
 ###################
 ##### GAM
@@ -142,6 +164,22 @@ RE_fit <- fit_xy(RE_model, x_train, y_train)
 cvpre(RE_model,
       k = 3,
       verbose = TRUE)
+
+
+#testing WORKS
+rule <- RE_model$rules$description[3]
+# Split the rule into individual conditions
+conditions <- strsplit(rule, " & ")[[1]]
+
+# Add 'train$' before each condition
+conditions_with_train <- paste("train$", conditions, sep = "")
+
+# Combine the conditions with ' & ' separator
+final_rule <- parse(text = paste(conditions_with_train, collapse = " & "))
+
+subset_train <- train[eval(final_rule), ]
+
+
 
 #AUC
 xpreds <- x_test
