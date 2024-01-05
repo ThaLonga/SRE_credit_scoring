@@ -31,6 +31,12 @@ get_splineworthy_columns <- function(X) {
   return(lapply(X, n_distinct)>5)
 }
 
+#save model
+save_model <- function(object, name) {
+  object_name <- deparse(substitute(object))
+  saveRDS(object, paste("./models/",name,"_",dataset,".RDS", sep=""))
+}
+
 ######
 
 #auc, BS, 
@@ -43,8 +49,11 @@ n_folds = 5
 ########################
 
 #Choose data to load
-load("data/GOLD/x_german.Rda")
-load("data/GOLD/y_german.Rda")
+
+dataset = "german"
+
+load(paste("data/GOLD/x_",dataset,".Rda", sep=""))
+load(paste("data/GOLD/y_",dataset,".Rda", sep=""))
 
 set.seed(123)
 train_indices <- sample(1:nrow(x), 0.8 * nrow(x))
@@ -119,7 +128,7 @@ train_DA <- train %>% select(-"HousingA153")
 ##### GAM
 ###################
 
-smooth_vars = colnames(train)[get_numeric_columns(train)]
+smooth_vars = colnames(train)[get_splineworthy_columns(train)]
 formula <- as.formula(
   stringr::str_sub(paste("label ~", 
         paste(ifelse(names(train) %in% smooth_vars, "s("  , ""),
@@ -130,12 +139,12 @@ formula <- as.formula(
 )
 
 gamtest <- gam(formula, family = "binomial", data = train) #degrees freedom error
-saveRDS(gamtest)
+save_model(gamtest, "gam")
 ###################
 ##### MARS
 ###################
 
-mars_model = earth(y_train ~ x_train)
+mars_model = earth(y_train ~ x_train, degree=2)
 mars_model$cuts
 
 ###################
