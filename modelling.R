@@ -145,7 +145,27 @@ save_model(gamtest, "gam")
 ###################
 
 mars_model = earth(y_train ~ x_train, degree=2)
-mars_model$cuts
+
+train = train  %>% 
+  mutate(label = factor(label, 
+                        labels = make.names(levels(label))))
+
+cv_mars <- train(
+  label~.,
+  data = train,
+  method = "earth",
+  metric = metric_caret,
+  trControl = trainControl(method = "cv", number = n_folds, classProbs = TRUE, allowParallel = TRUE),
+  tuneGrid = expand.grid(nprune=50, degree = hyperparameters_MARS$degree)
+)
+
+# View results
+cv_mars$bestTune
+##    nprune degree
+## 16     56      2
+
+cv_mars$results %>%
+  filter(nprune == cv_mars$bestTune$nprune, degree == cv_mars$bestTune$degree)
 
 ###################
 #####Rule ensembles

@@ -9,8 +9,12 @@ hyperparameters_LR_R = list(
 
 #GAM
 
-#hyperparameters_
-#hyperparameters_
+#MARS
+hyperparameters_MARS = list(
+  degree = c(1:3),
+  nprune = c(seq(2, 50, length.out = 5))
+)
+
 #hyperparameters_
 #hyperparameters_
 #hyperparameters_
