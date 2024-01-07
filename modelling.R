@@ -5,11 +5,15 @@
 ######
 #import
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
-p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, parallel, pROC, earth, Matrix, pre, caret, parsnip)
+p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, parallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2)
 source("hyperparameters.R")
 
 #setup cluster
 cl <- makeCluster(detectCores()-1)
+
+#########################
+# functions, will be moved
+#########################
 
 #evaluation function for caret tuning from pre package
 BigSummary <- function (data, lev = NULL, model = NULL) {
@@ -35,6 +39,30 @@ get_splineworthy_columns <- function(X) {
 save_model <- function(object, name) {
   object_name <- deparse(substitute(object))
   saveRDS(object, paste("./models/",name,"_",dataset,".RDS", sep=""))
+}
+
+#PG: cutoff = max probability of default
+partialGini <- function(preds, actuals, cutoff = 0.4) {
+  
+  # Sort observations by predicted probabilities
+  sorted_indices <- order(probs, decreasing = TRUE)
+  sorted_probs <- probs[sorted_indices]
+  sorted_actuals <- actuals[sorted_indices]
+  
+  # Select subset with PD < 0.4
+  subset_indices <- which(sorted_probs < cutoff)
+  subset_probs <- sorted_probs[subset_indices]
+  subset_actuals <- sorted_actuals[subset_indices]
+  
+  # Calculate ROC curve for the subset
+  roc_subset <- pROC::roc(subset_actuals, subset_probs)
+  
+  # Calculate AUC for the subset
+  partial_auc <- pROC::auc(roc_subset)
+  
+  # Calculate partial Gini coefficient
+  partial_gini <- 2 * partial_auc - 1
+  return(partial_gini)
 }
 
 ######
@@ -216,8 +244,14 @@ xpreds$good <- y_test
 prob=predict(RE_model, newdata = data.frame(x_test), type=c("response"))
 xpreds$prob<-data.frame(prob)
 g <- roc(unlist(good) ~ unlist(prob), data = xpreds)
-plot(g)    
 AUC <- g$auc
+ggroc(g, colour = 'steelblue', size = 1) +
+  ggtitle(paste0('ROC Curve ', '(AUC = ', round(AUC,3), ')')) +
+  theme_minimal() + geom_abline(intercept = 1, slope = 1,
+      color = "darkgrey", linetype = "dashed") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
 #
 
 ######
@@ -447,15 +481,8 @@ xpreds$prob<-data.frame(prob)
 g <- roc(unlist(good) ~ unlist(prob), data = xpreds)
 plot(g)    
 AUC <- g$auc
-#
 
 
-#PG
-
-#𝐺𝑖𝑛𝑖=2*partial 𝐴𝑈𝐶/(a+b)(b-a) − 1
-
-(2*auc(good ~ prob, data = as.data.frame(xpreds), partial.auc = c(0,0.5))/((0+0.5)*(0.5-0)))-1
-2*(AUC-0.5)
 #BS
 #accuracy: closer to 0 = better (1/N)*sum((f-o)²)
 
