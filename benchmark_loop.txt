@@ -1,0 +1,45 @@
+---MAIN---
+
+source(models) #imports all models as functions with parameters, dependent on model (X, Y, hypergrid, CVfolds)
+source(hyperparameters) #imports hypergrids
+
+select evaluation metric
+create dataframe metric_results with columns (algorithm, dataset1, dataset2,...)
+metric_results$algorithm <- algorithms_list
+for (datasets) {
+	SEED_1
+	folds <- create 50/50 train test split 
+	outer loop: for(folds) {
+		create predictions_{fold}_dataframefor storing predictions
+		create metric_dataset_{fold}_results for storing predictions
+
+		algorithm 1 {
+			SEED_1
+			5 fold CV hyperparameter tuning
+			save("algorithm1_dataset_metric")
+			retrain on full training fold if not already
+			make predictions and store them as predictions_{fold}_dataframe column
+		}
+
+		algorithm 2 {
+			SEED_1
+			5 fold CV hyperparameter tuning
+			save("algorithm2_dataset_metric")
+			retrain on full training fold if not already
+			make predictions and store them as predictions_{fold}_dataframe column
+		}
+		.
+		.
+		.
+		save(predictions_{fold}_dataframe)
+		for (column in predictions_{fold}_dataframe) {
+			calculate metric
+			store metric in metric_dataset_{fold}_results 
+		}
+	}
+
+	avg_metric_{dataset}_results <- avg(metric_dataset_1_results, metric_dataset_2_results)
+	save(avg_metric_{dataset}_results)
+	metric_results$dataset <- avg_metric_{dataset}_results 
+}
+save(metric_results)
