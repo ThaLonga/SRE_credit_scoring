@@ -28,16 +28,9 @@ german_dummies <- german_dummies %>%
   mutate(Number_people_maintenance = Winsorize(Number_people_maintenance))
   
 # change 1,2 to 0,1
-german_with_dummies$target <- german_dummies$target-1
-x_german <- german_dummies %>% 
-  select(-target) %>%
-  as.matrix()
-y_german <- german_dummies %>% 
-  select(target) %>%
-  as.matrix()
+german_dummies$target <- german_dummies$target-1
 
-save(x_german, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/x_german.Rda")
-save(y_german, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/y_german.Rda")
+save(german_dummies, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/german.Rda")
 
 
 #Australian
@@ -45,7 +38,7 @@ australian <- read_table("data/statlog+australian+credit+approval/australian.dat
 
 australian_dummies <- australian %>% 
   dummy_cols(select_columns = c("X1" , "X4" , "X5" , "X6" , "X8" , "X9" , "X11" , "X12"), remove_first_dummy = TRUE, remove_selected_columns = TRUE) %>%
-  rename("target" = "X15")
+  rename("label" = "X15")
 
 australian_dummies <- australian_dummies %>%
   mutate(X2 = Winsorize(X2)) %>%
@@ -54,16 +47,9 @@ australian_dummies <- australian_dummies %>%
   mutate(X10 = Winsorize(X10)) %>%
   mutate(X13 = Winsorize(X13)) %>%
   mutate(X14 = Winsorize(X14))
-  
-x_australian <- australian_dummies %>% 
-  select(-target) %>%
-  as.matrix()
-y_australian <- australian_dummies %>% 
-  select(target) %>%
-  as.matrix()
 
-save(x_australian, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/x_australian.Rda")
-save(y_australian, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/y_australian.Rda")
+
+save(australian_dummies, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/australian.Rda")
 
 
 #GMSC
@@ -73,20 +59,7 @@ kaggle <- read_csv("data/GiveMeSomeCredit/cs-training.csv")
 kaggle_imputed <- impute_missing_by_mean_with_dummy(kaggle)
 
 kaggle_imputed <- kaggle_imputed %>%
-  select(-...1) %>%
-  rename("target" = "SeriousDlqin2yrs")
+  select(-...1) %>%       
+  rename("label" = "SeriousDlqin2yrs")
 
-australian_dummies <- australian_dummies %>%
-  mutate(X2 = Winsorize(X2)) %>%
-  mutate(X3 = Winsorize(X3)) %>%
-  mutate(X7 = Winsorize(X7)) %>%
-
-x_kaggle <- kaggle_imputed %>% 
-  select(-target) %>%
-  as.matrix()
-y_kaggle <- kaggle_imputed %>% 
-  select(target) %>%
-  as.matrix()
-
-save(x_kaggle, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/x_kaggle.Rda")
-save(y_kaggle, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/y_kaggle.Rda")
+save(kaggle_imputed, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/kaggle.Rda")
