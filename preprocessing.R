@@ -1,5 +1,5 @@
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
-p_load(tidyverse, fastDummies, dplyr)
+p_load(tidyverse, fastDummies, dplyr, DescTools)
 
 source('./src/preprocessing_functions.R')
 
@@ -12,24 +12,27 @@ names(german) <- c("Status_existing_checking_account", "Duration_month", "Credit
                    "Property", "Age", "Other_installment_plans", "Housing", "existing_credits", "Job",
                    "Number_people_maintenance", "Telephone", "foreign_worker", "target")
 
-german_cats_dummies <- model.matrix(~ Status_existing_checking_account + Credit_history + 
-                                      Purpose + Savings_account_bonds + Present_employment_since + 
-                                      Personal_status_and_sex + Other_debtors_guarantors + Property + 
-                                      Other_installment_plans + Housing + Job + Telephone + 
-                                      foreign_worker, german) 
+german_dummies <- german %>% 
+  dummy_cols(select_columns = c("Status_existing_checking_account", "Credit_history",
+                                "Purpose", "Savings_account_bonds", "Present_employment_since",
+                                "Personal_status_and_sex", "Other_debtors_guarantors", "Property",
+                                "Other_installment_plans", "Housing", "Job", "Telephone", "foreign_worker"), remove_first_dummy = TRUE, remove_selected_columns = TRUE)
 
-german_with_dummies <- cbind(as.data.frame(german), as.data.frame(german_cats_dummies)) %>%
-  select(-`(Intercept)`, -Status_existing_checking_account, -Credit_history, 
-         -Purpose, -Savings_account_bonds, -Present_employment_since, 
-         -Personal_status_and_sex, -Other_debtors_guarantors, -Property,
-         -Other_installment_plans, -Housing, -Job, -Telephone, -foreign_worker)
-
+german_dummies <- german_dummies %>%
+  mutate(Duration_month = Winsorize(Duration_month)) %>%
+  mutate(amount = Winsorize(amount)) %>%
+  mutate(Installment_rate_percentage_disposable_income = Winsorize(Installment_rate_percentage_disposable_income)) %>%
+  mutate(Present_residence_since = Winsorize(Present_residence_since)) %>%
+  mutate(Age = Winsorize(Age)) %>%
+  mutate(existing_credits = Winsorize(existing_credits)) %>%
+  mutate(Number_people_maintenance = Winsorize(Number_people_maintenance))
+  
 # change 1,2 to 0,1
-german_with_dummies$target <- german_with_dummies$target-1
-x_german <- german_with_dummies %>% 
+german_with_dummies$target <- german_dummies$target-1
+x_german <- german_dummies %>% 
   select(-target) %>%
   as.matrix()
-y_german <- german_with_dummies %>% 
+y_german <- german_dummies %>% 
   select(target) %>%
   as.matrix()
 
@@ -44,6 +47,14 @@ australian_dummies <- australian %>%
   dummy_cols(select_columns = c("X1" , "X4" , "X5" , "X6" , "X8" , "X9" , "X11" , "X12"), remove_first_dummy = TRUE, remove_selected_columns = TRUE) %>%
   rename("target" = "X15")
 
+australian_dummies <- australian_dummies %>%
+  mutate(X2 = Winsorize(X2)) %>%
+  mutate(X3 = Winsorize(X3)) %>%
+  mutate(X7 = Winsorize(X7)) %>%
+  mutate(X10 = Winsorize(X10)) %>%
+  mutate(X13 = Winsorize(X13)) %>%
+  mutate(X14 = Winsorize(X14))
+  
 x_australian <- australian_dummies %>% 
   select(-target) %>%
   as.matrix()
@@ -64,6 +75,11 @@ kaggle_imputed <- impute_missing_by_mean_with_dummy(kaggle)
 kaggle_imputed <- kaggle_imputed %>%
   select(-...1) %>%
   rename("target" = "SeriousDlqin2yrs")
+
+australian_dummies <- australian_dummies %>%
+  mutate(X2 = Winsorize(X2)) %>%
+  mutate(X3 = Winsorize(X3)) %>%
+  mutate(X7 = Winsorize(X7)) %>%
 
 x_kaggle <- kaggle_imputed %>% 
   select(-target) %>%
