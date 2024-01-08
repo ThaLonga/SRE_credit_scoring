@@ -1,45 +1,63 @@
 ---MAIN---
 
-source(models) #imports all models as functions with parameters, dependent on model (X, Y, hypergrid, CVfolds)
+source(models) #imports all models as template functions with parameters, dependent on model (X, Y, hypergrid, CVfolds)
 source(hyperparameters) #imports hypergrids
 
-select evaluation metric
-create dataframe metric_results with columns (algorithm, dataset1, dataset2,...)
-metric_results$algorithm <- algorithms_list
+# 5x2 repeated cross validation
+
+N=5 (repeats)
+metric = metric (AUC, BS or PG)
+create empty dataframe metric_results with columns: (dataset, repeat, fold, algorithm, metric)	
+	#dataset = {GC, AC, GMSC}
+	#repeat = {1:5}
+	#fold = {1, 2}
+	#algorithm = {LR-R, MARS, SRE,...}
+
+
 for (datasets) {
-	SEED_1
-	folds <- create 50/50 train test split 
-	outer loop: for(folds) {
-		create predictions_{fold}_dataframefor storing predictions
-		create metric_dataset_{fold}_results for storing predictions
+	for(N repeats) {
 
-		algorithm 1 {
-			SEED_1
-			5 fold CV hyperparameter tuning
-			save("algorithm1_dataset_metric")
-			retrain on full training fold if not already
-			make predictions and store them as predictions_{fold}_dataframe column
-		}
+		SEED(N)
+		folds <- create 50/50 train test split 
+		for(folds) {
 
-		algorithm 2 {
-			SEED_1
-			5 fold CV hyperparameter tuning
-			save("algorithm2_dataset_metric")
-			retrain on full training fold if not already
-			make predictions and store them as predictions_{fold}_dataframe column
-		}
-		.
-		.
-		.
-		save(predictions_{fold}_dataframe)
-		for (column in predictions_{fold}_dataframe) {
-			calculate metric
-			store metric in metric_dataset_{fold}_results 
+			algorithm_1 {
+				SEED(N+10*fold)
+				5 fold CV hyperparameter tuning
+				save("algorithm1_dataset_metric")
+				retrain on full training fold if not already
+				make predictions and store them
+			}
+			calculate metric on predictions
+			metric_results add row (dataset, repeat, fold, algorithm_1, metric)
+
+			algorithm_2 {
+				SEED(N+10*fold)
+				5 fold CV hyperparameter tuning
+				save("algorithm2_dataset_metric")
+				retrain on full training fold if not already
+				make predictions and store them as predictions_{fold}_dataframe column
+			}
+			calculate metric on predictions
+			metric_results add row (dataset, repeat, fold, algorithm_2, metric)
+			.
+			.
+			.
+			
+			}
 		}
 	}
-
-	avg_metric_{dataset}_results <- avg(metric_dataset_1_results, metric_dataset_2_results)
-	save(avg_metric_{dataset}_results)
-	metric_results$dataset <- avg_metric_{dataset}_results 
 }
 save(metric_results)
+
+#result should look like:
+---------------------------------------------------------
+dataset	| repeat	| fold	| algorithm	| metric |
+--------|---------------|-------|---------------|--------|
+GC	|1		|1	|LR-R		|x	 |
+GC	|1		|1	|MARS		|x	 |
+GC	|1		|1	|SRE		|x	 |
+...
+
+# Calculate average of metric over folds and then over repeats for each algorithm and dataset.
+metric_results %>% groupby(dataset, algorithm) %>% average(metric) #calculate average
