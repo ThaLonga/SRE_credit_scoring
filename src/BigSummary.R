@@ -5,7 +5,7 @@ BigSummary <- function (data, lev = NULL, model = NULL) {
   rocObject <- try(pROC::roc(ifelse(data$obs == lev[2], 1, 0), data[, lev[2]],
                              direction = "<", quiet = TRUE), silent = TRUE)
   #PG
-  probs <- try(data[,"X2"], silent = TRUE)
+  probs <- try(data[,"X1"], silent = TRUE)
   actuals <- data$obs
   sorted_indices <- order(probs, decreasing = TRUE)
   sorted_probs <- probs[sorted_indices]

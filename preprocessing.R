@@ -10,7 +10,7 @@ names(german) <- c("Status_existing_checking_account", "Duration_month", "Credit
                    "Savings_account_bonds", "Present_employment_since", "Installment_rate_percentage_disposable_income",
                    "Personal_status_and_sex", "Other_debtors_guarantors", "Present_residence_since",
                    "Property", "Age", "Other_installment_plans", "Housing", "existing_credits", "Job",
-                   "Number_people_maintenance", "Telephone", "foreign_worker", "target")
+                   "Number_people_maintenance", "Telephone", "foreign_worker", "label")
 
 german_dummies <- german %>% 
   dummy_cols(select_columns = c("Status_existing_checking_account", "Credit_history",
@@ -28,7 +28,7 @@ german_dummies <- german_dummies %>%
   mutate(Number_people_maintenance = Winsorize(Number_people_maintenance))
   
 # change 1,2 to 0,1
-german_dummies$target <- german_dummies$target-1
+german_dummies$label <- as.factor(german_dummies$label-1)
 
 save(german_dummies, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/german.Rda")
 
