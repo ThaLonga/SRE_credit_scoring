@@ -1,16 +1,7 @@
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
 p_load(tidyverse, fastDummies, dplyr)
 
-impute_missing_by_mean <- function(data) {
-  for (col in names(data)) {
-    if (any(is.na(data[[col]]))) {
-      col_mean <- mean(data[[col]], na.rm = TRUE)
-      data[[col]][is.na(data[[col]])] <- col_mean
-    }
-  }
-  return(data)
-}
-
+source('./src/preprocessing_functions.R')
 
 #German
 german <- read_table("data/statlog+german+credit+data/german.csv", col_names = FALSE)
@@ -68,7 +59,7 @@ save(y_australian, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/y_au
 kaggle <- read_csv("data/GiveMeSomeCredit/cs-training.csv")
 
 #no dummies #check Lessman 2015 for preprocessing
-kaggle_imputed <- impute_missing_by_mean(kaggle)
+kaggle_imputed <- impute_missing_by_mean_with_dummy(kaggle)
 
 kaggle_imputed <- kaggle_imputed %>%
   select(-...1) %>%
