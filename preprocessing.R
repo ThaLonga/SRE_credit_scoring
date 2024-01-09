@@ -74,8 +74,8 @@ thomas <- thomas %>%
   mutate(label = factor(label, 
                         labels = make.names(levels(label))))
 
-thomas$YOB_flag <- ifelse(thomas$YOB == 99, 1, 0)
-thomas$DHVAL_flag <- ifelse(thomas$DHVAL == 0, 1, 0)
-thomas$DMORT_flag <- ifelse(thomas$DMORT == 0, 1, 0)
+thomas$YOB_flag <- as.factor(ifelse(thomas$YOB == 99, 1, 0))
+thomas$DHVAL_flag <- as.factor(ifelse(thomas$DHVAL == 0, 1, 0))
+thomas$DMORT_flag <- as.factor(ifelse(thomas$DMORT == 0, 1, 0))
 
 save(thomas, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/thomas.Rda")
