@@ -48,6 +48,8 @@ australian_dummies <- australian_dummies %>%
   mutate(X13 = Winsorize(X13)) %>%
   mutate(X14 = Winsorize(X14))
 
+australian_dummies$label <- as.factor(australian_dummies$label)
+
 
 save(australian_dummies, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/australian.Rda")
 
@@ -62,4 +64,21 @@ kaggle_imputed <- kaggle_imputed %>%
   select(-...1) %>%       
   rename("label" = "SeriousDlqin2yrs")
 
+kaggle_imputed$label <- as.factor(kaggle_imputed$label)
+
+
 save(kaggle_imputed, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/kaggle.Rda")
+
+#GMSC
+thomas <- read_delim("data/02thomas/Loan_Data.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+#no dummies #check Lessman 2015 for preprocessing
+thomas_dummies <- thomas %>% 
+  dummy_cols(select_columns = c("AES" , "RES"), remove_first_dummy = TRUE, remove_selected_columns = TRUE) %>%
+  rename("label" = "BAD")
+thomas_dummies$DHVAL_flag <- ifelse(thomas_dummies$DHVAL == 0, 1, 0)
+thomas_dummies$DMORT_flag <- ifelse(thomas_dummies$DMORT == 0, 1, 0)
+
+thomas_dummies$label <- as.factor(thomas_dummies$label)
+
+save(thomas_dummies, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/thomas.Rda")
