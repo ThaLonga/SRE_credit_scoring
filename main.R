@@ -50,9 +50,10 @@ for(dataset in datasets) {
   original_numeric_predictors <- names(dataset)[sapply(dataset, is.numeric)]
   LINEAR_recipe <- TREE_recipe %>%
     step_hai_winsorized_truncate(all_numeric_predictors(), fraction = 0.025) %>%
+    step_select(-original_numeric_predictors)%>%
     step_normalize(all_numeric_predictors()) %>%
     step_dummy(all_string_predictors()) %>%
-    step_dummy(all_factor_predictors()) %>%
+    step_dummy(all_factor_predictors())
   
   
   if(dataset_counter==3) {nr_repeats <- 3}
@@ -91,6 +92,7 @@ for(dataset in datasets) {
   }
   dataset_counter <- dataset_counter + 1
 }
+write.csv(metric_results, file = "./results/AUCROC_results.csv")
 
 stopCluster(cl)
 
