@@ -1,6 +1,6 @@
 # main
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
-p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, parallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows)
+p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, parallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai)
 #conventions:
 # target variable = label
 # indepentent variables = all others
@@ -18,9 +18,10 @@ metric = "AUCROC"
 nr_repeats = 5
 outerfolds = 2
 innerfolds = 5
-dataset_vector = c("GC", "AC", "GMSC")
+dataset_vector = c("GC", "AC", "GMSC", "TH02")
 
 ctrl <- trainControl(method = "cv", number = innerfolds, classProbs = TRUE, summaryFunction = BigSummary)
+
 
 
 
@@ -34,12 +35,29 @@ metric_results <- data.frame(
 )
 #metric_results[nrow(metric_results) + 1,] = list(dataset, 2, 1, "test", 40.485)
 
+
+
 dataset_counter = 1
 
-for(dataset in datasets[1]) {
+for(dataset in datasets) {
+  
+  #formulate recipes
+  TREE_recipe <- recipe(label ~., data = dataset) %>%
+    step_impute_mean(all_numeric_predictors()) %>%
+    step_impute_mode(all_string_predictors()) %>%
+    step_impute_mode(all_factor_predictors())
+  
+  original_numeric_predictors <- names(dataset)[sapply(dataset, is.numeric)]
+  LINEAR_recipe <- TREE_recipe %>%
+    step_hai_winsorized_truncate(all_numeric_predictors(), fraction = 0.025) %>%
+    step_normalize(all_numeric_predictors()) %>%
+    step_dummy(all_string_predictors()) %>%
+    step_dummy(all_factor_predictors()) %>%
+  
   
   if(dataset_counter==3) {nr_repeats <- 3}
   else {nr_repeats <- 5}
+  
   set.seed(123)
   # create 5x2 folds
   folds <- vfold_cv(dataset, v = outerfolds, repeats = nr_repeats, strata = NULL)
@@ -53,12 +71,8 @@ for(dataset in datasets[1]) {
     #####
     # LRR
     #####
-    LRR_recipe <- recipe(label ~., data = dataset) %>%
-      step_dummy() %>%
-      step_zv() %>%
-      step_normalize(all_numeric_predictors())
     
-    LRR_model <- train(LRR_recipe, data = train,  method = "glmnet", trControl = ctrl, metric = metric,
+    LRR_model <- train(LINEAR_recipe, data = train,  method = "glmnet", trControl = ctrl, metric = metric,
                        tuneGrid = expand.grid(alpha = hyperparameters_LR_R$alpha,lambda = hyperparameters_LR_R$lambda),
                        allowParallel=TRUE)
     LRR_preds <- predict(LRR_model, test, type = 'probs')
@@ -68,7 +82,12 @@ for(dataset in datasets[1]) {
     AUC <- g$auc
     metric_results[nrow(metric_results) + 1,] = list(dataset_vector[dataset_counter], i, "LRR", AUC)
     print(AUC)
-
+    
+    #####
+    # GAM
+    #####
+    
+    
   }
   dataset_counter <- dataset_counter + 1
 }
