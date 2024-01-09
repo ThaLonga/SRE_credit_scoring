@@ -1,6 +1,6 @@
 # main
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
-p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, parallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2)
+p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, parallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows)
 #conventions:
 # target variable = label
 # indepentent variables = all others
@@ -17,50 +17,60 @@ cl <- makeCluster(detectCores()-1)
 metric = "AUCROC"
 nr_repeats = 5
 outerfolds = 2
+innerfolds = 5
 dataset_vector = c("GC", "AC", "GMSC")
+
+ctrl <- trainControl(method = "cv", number = innerfolds, classProbs = TRUE, summaryFunction = BigSummary)
+
 
 
 # create empty dataframe metric_results with columns: (dataset, repeat, fold, algorithm, metric)	
 metric_results <- data.frame(
   dataset = character(),
-  nr_repeat = integer(),
-  nr_outer_fold = integer(),
+  nr_fold = integer(),
   algorithm = character(),
   metric = double(),
   stringsAsFactors = FALSE
 )
 #metric_results[nrow(metric_results) + 1,] = list(dataset, 2, 1, "test", 40.485)
 
-dataset_counter = 0
-for(dataset in datasets) {
-  dataset_counter <- dataset_counter + 1
+dataset_counter = 1
+
+for(dataset in datasets[1]) {
+  
   if(dataset_counter==3) {nr_repeats <- 3}
-  for(N in 1:nr_repeats) {
-    print(paste("repeat",N))
+  else {nr_repeats <- 5}
+  set.seed(123)
+  # create 5x2 folds
+  folds <- vfold_cv(dataset, v = outerfolds, repeats = nr_repeats, strata = NULL)
+  for(i in 1:nrow(folds)) {
+    cat("Fold", i, "/ 10 \n")
+    train <- analysis(folds$splits[[i]])
+    test <- assessment(folds$splits[[i]])
+
+    innerseed <- i
     
-    set.seed(N)
-    train_indices <- sample(1:nrow(dataset), 0.5 * nrow(dataset))
-    train_sets <- list(dataset[train_indices, ], dataset[-train_indices, ])
-    test_sets <- list(dataset[-train_indices, ], dataset[train_indices, ])
+    #####
+    # LRR
+    #####
+    LRR_recipe <- recipe(label ~., data = dataset) %>%
+      step_dummy() %>%
+      step_zv() %>%
+      step_normalize(all_numeric_predictors())
     
-    for(fold in 1:outerfolds) {
-      print(paste("fold",fold))
-      #create seed
-      innerseed <- N*10+fold
-      
-      #select train and test
-      train <- train_sets[[fold]]
-      test <- test_sets[[fold]]
-      LRR_preds <- LR_R(train, test, n_folds = nr_repeats, seed = innerseed)
-      LRR_preds$label <- test$label
-      g <- roc(label ~ X1, data = LRR_preds, directory = "<")
-      AUC <- g$auc
-      metric_results[nrow(metric_results) + 1,] = list(dataset_vector[dataset_counter], N, fold, "LRR", AUC)
-      print(AUC)
-      
-    }
+    LRR_model <- train(LRR_recipe, data = train,  method = "glmnet", trControl = ctrl, metric = metric,
+                       tuneGrid = expand.grid(alpha = hyperparameters_LR_R$alpha,lambda = hyperparameters_LR_R$lambda),
+                       allowParallel=TRUE)
+    LRR_preds <- predict(LRR_model, test, type = 'probs')
+    print("pred ok")
+    LRR_preds$label <- test$label
+    g <- roc(label ~ X1, data = LRR_preds, direction = "<")
+    AUC <- g$auc
+    metric_results[nrow(metric_results) + 1,] = list(dataset_vector[dataset_counter], i, "LRR", AUC)
+    print(AUC)
 
   }
+  dataset_counter <- dataset_counter + 1
 }
 
 stopCluster(cl)
