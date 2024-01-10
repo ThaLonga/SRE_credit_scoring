@@ -55,8 +55,11 @@ kaggle <- read_csv("data/GiveMeSomeCredit/cs-training.csv")
 kaggle <- kaggle %>%
   mutate_at(vars(SeriousDlqin2yrs), as.factor) %>%
   rename("label" = "SeriousDlqin2yrs") %>%
+  rename("NumberOfTime30To59DaysPastDueNotWorse" = "NumberOfTime30-59DaysPastDueNotWorse") %>%
+  rename("NumberOfTime60To89DaysPastDueNotWorse" = "NumberOfTime60-89DaysPastDueNotWorse") %>%
   mutate(label = factor(label, 
-                        labels = make.names(levels(label))))
+                        labels = make.names(levels(label)))) %>%
+  select(-...1)
 
 #add flags for missing values
 kaggle$MonthlyIncome_flag <- as.factor(ifelse(((kaggle$MonthlyIncome == 0)|is.na(kaggle$MonthlyIncome)), 1, 0))
