@@ -6,7 +6,7 @@
 #import
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
 p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, parallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2)
-source("hyperparameters.R")
+source("src/hyperparameters.R")
 
 #setup cluster
 cl <- makeCluster(detectCores()-1)
@@ -32,7 +32,7 @@ BigSummary <- function (data, lev = NULL, model = NULL) {
 
 # return boolean vector TRUE for numerical columns (not boolean)
 get_splineworthy_columns <- function(X) {
-  return(lapply(X, n_distinct)>5)
+  return(lapply(X, n_distinct)>6)
 }
 
 #save model
@@ -45,17 +45,17 @@ save_model <- function(object, name) {
 partialGini <- function(preds, actuals, cutoff = 0.4) {
   
   # Sort observations by predicted probabilities
-  sorted_indices <- order(probs, decreasing = TRUE)
-  sorted_probs <- probs[sorted_indices]
+  sorted_indices <- order(preds, decreasing = TRUE)
+  sorted_preds <- preds[sorted_indices]
   sorted_actuals <- actuals[sorted_indices]
   
   # Select subset with PD < 0.4
-  subset_indices <- which(sorted_probs < cutoff)
-  subset_probs <- sorted_probs[subset_indices]
+  subset_indices <- which(sorted_preds < cutoff)
+  subset_preds <- sorted_preds[subset_indices]
   subset_actuals <- sorted_actuals[subset_indices]
   
   # Calculate ROC curve for the subset
-  roc_subset <- pROC::roc(subset_actuals, subset_probs)
+  roc_subset <- pROC::roc(subset_actuals, subset_preds)
   
   # Calculate AUC for the subset
   partial_auc <- pROC::auc(roc_subset)
@@ -68,7 +68,7 @@ partialGini <- function(preds, actuals, cutoff = 0.4) {
 ######
 
 #auc, BS, 
-metric = "auc"
+metric = "Brier"
 metric_caret = ifelse(metric=="auc", "ROC", metric)
 n_folds = 5
 
@@ -123,10 +123,11 @@ train = train  %>%
                         labels = make.names(levels(label))))
 
 set.seed(123)
-LRR_model <- train(label ~., data = train,  method = "glmnet", trControl = LR_R_ctrl, metric = metric_caret,
+LRR_model <- train(label ~., data = train,  method = "glmnet", trControl = LR_R_ctrl, metric = "ROC",
                    tuneGrid = expand.grid(alpha = hyperparameters_LR_R$alpha,lambda = hyperparameters_LR_R$lambda),
                    allowParallel=TRUE)
 LRR_model_final = LRR_model$finalModel
+preds <- predict(LRR_model, x_test, type = "prob")
 #best tune: alpha = 0.1, lambda = 0.1
 #coef(LRR_model$finalModel, LRR_model$bestTune$lambda)
 
