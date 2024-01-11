@@ -45,3 +45,29 @@ partialGini <- function(preds, actuals, cutoff = 0.4) {
   partial_gini <- 2 * partial_auc - 1
   return(partial_gini)
 }
+
+delete_variables_based_on_collinearity <- function(data, target_variable, threshold = 0.7) {
+  # Extract the numeric variables
+  numeric_vars <- sapply(data, is.numeric)
+  numeric_data <- data[, numeric_vars]
+  
+  # Calculate the correlation matrix
+  correlation_matrix <- cor(numeric_data)
+  
+  # Find highly correlated variable pairs
+  high_corr_pairs <- which(abs(correlation_matrix) > threshold & correlation_matrix < 1, arr.ind = TRUE)
+  
+  # Identify the variable with the highest correlation with the target variable in each pair
+  selected_vars <- character(0)
+  for (i in 1:nrow(high_corr_pairs)) {
+    var1 <- rownames(correlation_matrix)[high_corr_pairs[i, 1]]
+    var2 <- colnames(correlation_matrix)[high_corr_pairs[i, 2]]
+    
+    corr_var1 <- cor(data[[var1]], as.numeric(data[[target_variable]]))
+    corr_var2 <- cor(data[[var2]], as.numeric(data[[target_variable]]))
+    
+    selected_var <- ifelse(abs(corr_var1) < abs(corr_var2), var1, var2)
+    selected_vars <- union(selected_vars, selected_var)
+  }
+  return(selected_vars)
+}

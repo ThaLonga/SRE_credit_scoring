@@ -95,7 +95,7 @@ for(dataset in datasets) {
     #preprocessing as no hyperparameters to be tuned
     train_bake <- LINEAR_recipe %>% prep(train) %>% bake(train)
     test_bake <- LINEAR_recipe %>% prep(train) %>% bake(test)
-    train_bake_x <- train_bake %>% select(-label)
+    train_bake_x <- train_bake %>% dplyr::select(-label)
     
     smooth_vars = colnames(train_bake_x)[get_splineworthy_columns(train_bake_x)]
     formula <- as.formula(
@@ -118,9 +118,74 @@ for(dataset in datasets) {
     print(AUC)
     
     #####
+    # LDA #needs CFS 
+    #####
+
+    nr_features_to_eliminate <- (sum(abs(cor(train_bake_x))>0.75)-ncol(train_bake_x))/2
+    features_ranked <- attrEval(label~., train_bake, "MDL")
+    selected_features <- names(features_ranked[-((ncol(train_bake_x)-nr_features_to_eliminate):ncol(train_bake_x))])
+    train_bake_selected <- train_bake %>% dplyr::select(all_of(selected_features), label)
+    train_bake_x_selected <- train_bake_x %>% dplyr::select(all_of(selected_features))
+    
+    FS <- cfs(label ~., data = datasets[[4]])
+    
+    LDA_model <- lda(label~., train_bake)
+    LDA_preds <- data.frame(predict(LDA_model, test_bake, type = 'prob')$posterior)
+    LDA_preds$label <- test_bake$label
+    #AUC
+    g <- roc(label ~ X1, data = LDA_preds, direction = "<")
+    AUC <- g$auc
+    metric_results[nrow(metric_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", AUC)
+    print(AUC)
+    
+    
+    #####
+    # QDA #needs CFS
+    #####
+    LDA_model <- train(data.frame(dplyr::select(train_bake,-label)), train_bake$label, method="stepLDA", trControl=trainControl(method="cv", number = 2, classProbs = TRUE, summaryFunction = BigSummary), metric = "partialGini",
+                       #tuneGrid = expand.grid(maxvar = (floor(3*ncol(train)/4):ncol(train)), direction = "forward"),
+                       allowParallel = TRUE)
+    #works but suboptimal
+    LDA_model <- lda(label~., data = train_bake)
+    LDA_preds <- data.frame(predict(LDA_model, test_bake, type = 'prob')$posterior)
+    LDA_preds$label <- test_bake$label
+    #AUC
+    g <- roc(label ~ X1, data = LDA_preds, direction = "<")
+    AUC <- g$auc
+    metric_results[nrow(metric_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", AUC)
+    print(AUC)
+    
+    
+    
+    
+    
+    
+    
+    
+    #####
     # CTREE
     #####
     
+    set.seed(innerseed)
+    CTREE_model <- train(TREE_recipe, data = train, method = "ctree", trControl = ctrl,
+          tuneGrid = expand.grid(mincriterion = hyperparameters_CTREE$mincriterion),
+          metric = "Brier", maximize = FALSE)
+    
+    CTREE_preds <- predict(CTREE_model, test, type = 'probs')
+    CTREE_preds$label <- test$label
+    #AUC
+    g <- roc(label ~ X1, data = CTREE_preds, direction = "<")
+    AUC <- g$auc
+    metric_results[nrow(metric_results) + 1,] = list(dataset_vector[dataset_counter], i, "CTREE", AUC)
+    print(AUC)
+    
+    #PG
+    pg <- partialGini(CTREE_preds$X1, CTREE_preds$label, 0.4)
+    pg
+    
+    #Brier
+    bs <- mean(((as.numeric(CTREE_preds$label)-1) - CTREE_preds$X1)^2)
+    bs
     
   }
   dataset_counter <- dataset_counter + 1

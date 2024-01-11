@@ -12,9 +12,14 @@ hyperparameters_LR_R = list(
 
 #LDA
 
+
 #QDA
 
 
+#CTREE
+hyperparameters_CTREE = list(
+  mincriterion = 1-c(0.05, 0.1, 0.2, 0.3, 0.4)
+)
 
 #RF
 
