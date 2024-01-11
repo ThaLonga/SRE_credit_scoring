@@ -71,3 +71,14 @@ delete_variables_based_on_collinearity <- function(data, target_variable, thresh
   }
   return(selected_vars)
 }
+
+extractBestModel <- function(modellist, metric = "AUCROC") {
+  # Extract the model with the highest mean AUCROC
+  best_model <- modellist[which.max(sapply(modellist, function(x) mean(x$resample[,metric])))]
+  
+  # Print details of the best model
+  #print(best_model)
+  
+  # Return the best model
+  return(best_model)
+}

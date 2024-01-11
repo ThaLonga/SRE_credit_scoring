@@ -1,6 +1,6 @@
 # main
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
-p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, parallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai)
+p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, doParallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai)
 #conventions:
 # target variable = label
 # indepentent variables = all others
@@ -13,6 +13,8 @@ source("./src/BigSummary.R")
 source("./src/data_loader.R")
 datasets <- load_data()
 cl <- makeCluster(detectCores()-1)
+registerDoParallel(cl)
+
 #(AUCROC, Brier, partialGini)
 metric = "AUCROC"
 nr_repeats = 5
@@ -20,7 +22,7 @@ outerfolds = 2
 innerfolds = 5
 dataset_vector = c("GC", "AC", "GMSC", "TH02")
 
-ctrl <- trainControl(method = "cv", number = innerfolds, classProbs = TRUE, summaryFunction = BigSummary)
+ctrl <- trainControl(method = "cv", number = innerfolds, classProbs = TRUE, summaryFunction = BigSummary, search = "grid")
 
 
 
@@ -186,10 +188,43 @@ for(dataset in datasets) {
     #Brier
     bs <- mean(((as.numeric(CTREE_preds$label)-1) - CTREE_preds$X1)^2)
     bs
+  
+    
+    #####
+    # RF
+    #####
+    modellist <- list()
+    for (ntree in hyperparameters_RF$ntrees){
+      set.seed(innerseed)
+      RF_model <- train(TREE_recipe, data = train, method = "rf", trControl = ctrl,
+                        tuneGrid = expand.grid(mtry = hyperparameters_RF$mtry),
+                        ntree = ntree,
+                        metric = "AUCROC", maximize = TRUE, allowParallel = TRUE)
+      key <- toString(ntree)
+      modellist[[key]] <- RF_model
+    }
+    RF_model <- extractBestModel(modellist)
+    RF_preds <- predict(RF_model, test, type = 'probs')
+    RF_preds$label <- test$label
+    #AUC
+    g <- roc(label ~ X1, data = RF_preds, direction = "<")
+    AUC <- g$auc
+    metric_results[nrow(metric_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", AUC)
+    print(AUC)
+    
+    #PG
+    pg <- partialGini(RF_preds$X1, RF_preds$label, 0.4)
+    pg
+    
+    #Brier
+    bs <- mean(((as.numeric(RF_preds$label)-1) - RF_preds$X1)^2)
+    bs
     
   }
   dataset_counter <- dataset_counter + 1
 }
+
+
 write.csv(metric_results, file = "./results/AUCROC_results.csv")
 
 stopCluster(cl)
