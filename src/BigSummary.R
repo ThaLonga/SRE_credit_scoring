@@ -28,6 +28,7 @@ BigSummary <- function (data, lev = NULL, model = NULL) {
     partial_auc <- pROC::auc(roc_subset)
     # Calculate partial Gini coefficient
     partial_gini <- 2 * partial_auc - 1
+    print(partial_gini)
   } else {
     # Set partial Gini to NA if there are not enough cases for ROC calculation
     partial_gini <- NA
@@ -39,6 +40,7 @@ BigSummary <- function (data, lev = NULL, model = NULL) {
     NA
   } else {
     rocObject$auc
+    print(rocObject$auc)
   }
   
   return(c(AUCROC = rocAUC, Brier = brscore, partialGini = partial_gini))

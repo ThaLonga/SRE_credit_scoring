@@ -48,7 +48,8 @@ for(dataset in datasets) {
   TREE_recipe <- recipe(label ~., data = dataset) %>%
     step_impute_mean(all_numeric_predictors()) %>%
     step_impute_mode(all_string_predictors()) %>%
-    step_impute_mode(all_factor_predictors())
+    step_impute_mode(all_factor_predictors()) %>%
+    step_zv(all_predictors())
   
     # for algorithms using linear terms (LRR, gam, rule ensembles)
   original_numeric_predictors <- names(dataset)[sapply(dataset, is.numeric)]
@@ -218,6 +219,39 @@ for(dataset in datasets) {
     
     #Brier
     bs <- mean(((as.numeric(RF_preds$label)-1) - RF_preds$X1)^2)
+    bs
+    
+    
+    #####
+    # XGB
+    #####
+
+    set.seed(innerseed)
+    
+    XGB_model <- train(label~., data = train_bake, method = "xgbTree", trControl = ctrl,
+                      tuneGrid = expand.grid(nrounds = hyperparameters_XGB$nrounds,
+                                             eta = hyperparameters_XGB$eta,
+                                             gamma = hyperparameters_XGB$gamma,
+                                             max_depth = hyperparameters_XGB$max_depth,
+                                             colsample_bytree = hyperparameters_XGB$colsample_bytree,
+                                             min_child_weight = hyperparameters_XGB$min_child_weight,
+                                             subsample = hyperparameters_XGB$subsample),
+                      metric = "AUCROC", maximize = TRUE, allowParallel = FALSE)
+
+    XGB_preds <- predict(XGB_model, test_bake, type = 'prob')
+    XGB_preds$label <- test$label
+    #AUC
+    g <- roc(label ~ X1, data = XGB_preds, direction = "<")
+    AUC <- g$auc
+    metric_results[nrow(metric_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", AUC)
+    print(AUC)
+    
+    #PG
+    pg <- partialGini(XGB_preds$X1, XGB_preds$label, 0.4)
+    pg
+    
+    #Brier
+    bs <- mean(((as.numeric(XGB_preds$label)-1) - XGB_preds$X1)^2)
     bs
     
   }

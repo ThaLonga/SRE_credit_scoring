@@ -22,10 +22,25 @@ hyperparameters_CTREE <- list(
 )
 
 #RF
+# Lessmann 2015
 hyperparameters_RF <- list(
   ntrees = c(100,250,500,750,1000),
   mtry = sqrt(ncol(train_bake_x)*c(0.1,0.25,0.5,1,2,4))
 )
+
+#XGB
+# B2Boost  and Lessmann
+hyperparameters_XGB <- list(
+  nrounds = c(10,50,100,250,500,1000), #L
+  eta = c(0.001, 0.01, 0.1, 0.2, 0.5), #B
+  gamma = c(0.5, 1, 1.5, 2), #B
+  max_depth = 6, #default
+  colsample_bytree = 1, #default
+  min_child_weight = 1, #default
+  subsample = 1 #default
+)
+
+#LightGBM eventueel
 
 #hyperparameters_
 #hyperparameters_
