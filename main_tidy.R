@@ -24,9 +24,7 @@ innerfolds = 3
 dataset_vector = c("GC", "AC", "GMSC", "TH02")
 
 ctrl <- trainControl(method = "cv", number = innerfolds, classProbs = TRUE, summaryFunction = BigSummary, search = "grid")
-
-
-
+metrics = metric_set(roc_auc, brier_class)
 
 # create empty dataframe metric_results with columns: (dataset, repeat, fold, algorithm, metric)	
 metric_results <- data.frame(
@@ -36,38 +34,15 @@ metric_results <- data.frame(
   metric = double(),
   stringsAsFactors = FALSE
 )
-#metric_results[nrow(metric_results) + 1,] = list(dataset, 2, 1, "test", 40.485)
-
-
+AUC_results <- metric_results
+Brier_results <- metric_results
+PG_results <- metric_results
 
 dataset_counter = 1
 
+
 for(dataset in datasets) {
   
-  # formulate recipes
-    # for tree-based algorithms
-  MINIMAL_recipe <- recipe(label ~., data = dataset) %>%
-    step_impute_mean(all_numeric_predictors()) %>%
-    step_impute_mode(all_string_predictors()) %>%
-    step_impute_mode(all_factor_predictors()) %>%
-    step_zv(all_predictors())
-  
-    # for tree-based that require dummies
-  TREE_recipe <- MINIMAL_recipe %>% step_dummy(all_string_predictors()) %>%
-    step_dummy(all_factor_predictors()) %>%
-    step_zv(all_predictors())
-  
-  
-    # for algorithms using linear terms (LRR, gam, rule ensembles)
-  original_numeric_predictors <- names(dataset)[sapply(dataset, is.numeric)]
-  LINEAR_recipe <- MINIMAL_recipe %>%
-    step_hai_winsorized_truncate(all_numeric_predictors(), fraction = 0.025) %>%
-    step_select(-all_of(original_numeric_predictors))%>%
-    step_normalize(all_numeric_predictors()) %>%
-    step_dummy(all_string_predictors()) %>%
-    step_dummy(all_factor_predictors()) %>%
-    step_zv(all_predictors())
-
   
   # for GMSC only 3 repeats because large dataset
   if(dataset_counter==3) {nr_repeats <- 3} else {nr_repeats <- 5}
@@ -79,6 +54,31 @@ for(dataset in datasets) {
     cat("Fold", i, "/ 10 \n")
     train <- analysis(folds$splits[[i]])
     test <- assessment(folds$splits[[i]])
+    
+    # formulate recipes
+    # for tree-based algorithms
+    MINIMAL_recipe <- recipe(label ~., data = train) %>%
+      step_impute_mean(all_numeric_predictors()) %>%
+      step_impute_mode(all_string_predictors()) %>%
+      step_impute_mode(all_factor_predictors()) %>%
+      step_zv(all_predictors())
+    
+    # for tree-based that require dummies
+    TREE_recipe <- MINIMAL_recipe %>% step_dummy(all_string_predictors()) %>%
+      step_dummy(all_factor_predictors()) %>%
+      step_zv(all_predictors())
+    
+    
+    # for algorithms using linear terms (LRR, gam, rule ensembles)
+    LINEAR_recipe <- MINIMAL_recipe %>%
+      step_hai_winsorized_truncate(all_numeric_predictors(), fraction = 0.025) %>%
+      step_rm(!contains("winsorized") & where(is.numeric)) %>%
+      step_normalize(all_numeric_predictors()) %>%
+      step_dummy(all_string_predictors()) %>%
+      step_dummy(all_factor_predictors()) %>%
+      step_zv(all_predictors())
+    
+    
 
     innerseed <- i
     
@@ -88,7 +88,6 @@ for(dataset in datasets) {
     
     set.seed(i)
     inner_folds <- train %>% vfold_cv(v=5)
-    metrics = metric_set(roc_auc, brier_class)
     
     
     LRR_model <- 
