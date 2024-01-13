@@ -1,6 +1,6 @@
 # main
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
-p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, doParallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai)
+p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, doParallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai, rlang, yardstick)
 #conventions:
 # target variable = label
 # indepentent variables = all others
@@ -8,6 +8,7 @@ p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, ticto
 #levels should be X1 and X2
 #evaluation function for caret tuning from pre package
 source("./src/models.R")
+source("./src/partialGini_yardstick.R")
 source("./src/hyperparameters.R")
 source("./src/BigSummary.R")
 source("./src/data_loader.R")
@@ -19,7 +20,7 @@ registerDoParallel(cl)
 metric = "AUCROC"
 nr_repeats = 5
 outerfolds = 2
-innerfolds = 5
+innerfolds = 3
 dataset_vector = c("GC", "AC", "GMSC", "TH02")
 
 ctrl <- trainControl(method = "cv", number = innerfolds, classProbs = TRUE, summaryFunction = BigSummary, search = "grid")
@@ -45,15 +46,21 @@ for(dataset in datasets) {
   
   # formulate recipes
     # for tree-based algorithms
-  TREE_recipe <- recipe(label ~., data = dataset) %>%
+  MINIMAL_recipe <- recipe(label ~., data = dataset) %>%
     step_impute_mean(all_numeric_predictors()) %>%
     step_impute_mode(all_string_predictors()) %>%
     step_impute_mode(all_factor_predictors()) %>%
     step_zv(all_predictors())
   
+    # for tree-based that require dummies
+  TREE_recipe <- MINIMAL_recipe %>% step_dummy(all_string_predictors()) %>%
+    step_dummy(all_factor_predictors()) %>%
+    step_zv(all_predictors())
+  
+  
     # for algorithms using linear terms (LRR, gam, rule ensembles)
   original_numeric_predictors <- names(dataset)[sapply(dataset, is.numeric)]
-  LINEAR_recipe <- TREE_recipe %>%
+  LINEAR_recipe <- MINIMAL_recipe %>%
     step_hai_winsorized_truncate(all_numeric_predictors(), fraction = 0.025) %>%
     step_select(-all_of(original_numeric_predictors))%>%
     step_normalize(all_numeric_predictors()) %>%
@@ -121,7 +128,7 @@ for(dataset in datasets) {
     print(AUC)
     
     #####
-    # LDA #needs CFS 
+    # LDA #needs CFS step_corr tidy
     #####
 
     nr_features_to_eliminate <- (sum(abs(cor(train_bake_x))>0.75)-ncol(train_bake_x))/2
@@ -157,9 +164,6 @@ for(dataset in datasets) {
     AUC <- g$auc
     metric_results[nrow(metric_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", AUC)
     print(AUC)
-    
-    
-    
     
     
     
@@ -253,6 +257,44 @@ for(dataset in datasets) {
     #Brier
     bs <- mean(((as.numeric(XGB_preds$label)-1) - XGB_preds$X1)^2)
     bs
+    
+    
+    
+    
+    #tidymodels
+    
+    xgb_folds <- train %>% vfold_cv(v=3)
+    
+    xgb_model <- 
+      parsnip::boost_tree(
+        mode = "classification",
+        trees = tune(),
+        tree_depth = tune(),
+        learn_rate = tune(),
+        loss_reduction = tune()
+      ) %>%
+      set_engine("xgboost")
+    
+    xgb_wf <- workflow() %>%
+      add_recipe(TREE_recipe) %>%
+      add_model(xgb_model)
+    
+    xgboost_tuned <- tune::tune_grid(
+      object = xgb_wf,
+      resamples = xgb_folds,
+      grid = hyperparameters_XGB_tidy,
+      metrics = metric_set(pg),
+      control = tune::control_grid(verbose = TRUE)
+    )
+    
+    xgboost_tuned %>%
+      tune::show_best(metric = "accuracy") %>%
+      knitr::kable()
+    
+    xgb_wf %>% fit(train, )
+    
+    
+    
     
   }
   dataset_counter <- dataset_counter + 1
