@@ -6,6 +6,11 @@ hyperparameters_LR_R <- list(
   lambda = c(0, 0.001,0.01,0.1,1,10)
 )
 
+hyperparameters_LR_R_tidy <- expand.grid(list(
+  mixture = c(0,.2,.4,.6,.8,1),
+  penalty = c(0, 0.001,0.01,0.1,1,10)
+))
+
 
 #GAM
 #splines for numerical
