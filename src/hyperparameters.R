@@ -29,8 +29,9 @@ hyperparameters_CTREE <- list(
 #RF
 # Lessmann 2015
 hyperparameters_RF <- list(
-  ntrees = c(100,250,500,750,1000),
-  mtry = sqrt(ncol(train_bake_x)*c(0.1,0.25,0.5,1,2,4))
+  mtry = sqrt(ncol(train_bake_x)*c(0.1,0.25,0.5,1,2,4)),
+  splitrule = "gini",
+  min.node.size = 1
 )
 
 #XGB

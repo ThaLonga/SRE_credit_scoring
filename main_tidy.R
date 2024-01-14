@@ -1,6 +1,6 @@
 # main
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
-p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, doParallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai, rlang, yardstick, bonsai, lightgbm)
+p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, doParallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai, rlang, yardstick, bonsai, lightgbm, ranger)
 #conventions:
 # target variable = label
 # indepentent variables = all others
@@ -85,10 +85,10 @@ for(dataset in datasets) {
     #####
     # LRR
     #####
+    print("LRR")
     
     set.seed(i)
     inner_folds <- train %>% vfold_cv(v=5)
-    
     
     LRR_model <- 
       parsnip::logistic_reg(
@@ -110,10 +110,6 @@ for(dataset in datasets) {
       control = tune::control_grid(verbose = TRUE)
     )
     
-    LRR_tuned %>%
-      tune::show_best(metric = "brier_class") %>%
-      knitr::kable()
-    
     best_booster_auc <- LRR_tuned %>% select_best("roc_auc")
     final_LRR_wf_auc <- LRR_wf %>% finalize_workflow(best_booster_auc)
     final_LRR_fit_auc <- final_LRR_wf_auc %>% last_fit(folds$splits[[i]], metrics = metrics)
@@ -127,28 +123,18 @@ for(dataset in datasets) {
       collect_metrics() %>%
       filter(.metric == "roc_auc") %>%
       pull(.estimate)
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "LRR", auc)
+    
     brier <- final_LRR_fit_brier %>%
       collect_metrics() %>%
       filter(.metric == "brier_class") %>%
       pull(.estimate)
-    
-    
-    roc_auc_value <- final_LRR_fit %>%
-      collect_metrics() %>%
-      filter(.metric == "roc_auc") %>%
-      pull(.estimate)
-    
-    
-    final_LRR_fit %>%
-      collect_predictions() %>% 
-      roc_curve(label, .pred_X0) %>% 
-      autoplot()
-    
+    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "LRR", brier)
     
     #####
     # GAM
     #####
-    
+    print("GAM")
     #preprocessing as no hyperparameters to be tuned
     train_bake <- LINEAR_recipe %>% prep(train) %>% bake(train)
     test_bake <- LINEAR_recipe %>% prep(train) %>% bake(test)
@@ -171,46 +157,61 @@ for(dataset in datasets) {
     #AUC
     g <- roc(label ~ X1, data = GAM_preds, direction = "<")
     AUC <- g$auc
-    metric_results[nrow(metric_results) + 1,] = list(dataset_vector[dataset_counter], i, "GAM", AUC)
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "GAM", AUC)
     print(AUC)
+    #Brier
+    brier <- brier_class_vec(GAM_preds$label, GAM_preds$X1)
+    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "GAM", brier)
+    
     
     #####
     # LDA #needs CFS step_corr tidy
-    #####
-
-    nr_features_to_eliminate <- (sum(abs(cor(train_bake_x))>0.75)-ncol(train_bake_x))/2
-    features_ranked <- attrEval(label~., train_bake, "MDL")
-    selected_features <- names(features_ranked[-((ncol(train_bake_x)-nr_features_to_eliminate):ncol(train_bake_x))])
-    train_bake_selected <- train_bake %>% dplyr::select(all_of(selected_features), label)
-    train_bake_x_selected <- train_bake_x %>% dplyr::select(all_of(selected_features))
+#    #####
+#    print("LDA")
+#  #step_corr doesnt work?
+#    nr_features_to_eliminate <- (sum(abs(cor(train_bake_x))>0.75)-ncol(train_bake_x))/2
+#    features_ranked <- attrEval(label~., train_bake, "MDL")
+#    selected_features <- names(features_ranked[-((ncol(train_bake_x)-nr_features_to_eliminate):ncol(train_bake_x))])
+#    corr_recipe <- recipe(label~., train_bake) %>%
+#      step_corr(threshold = 0.1) %>%
+#      prep()
+#    train_bake_selected <- corr_recipe %>% bake(train_bake)
+#    test_bake_selected <- corr_recipe %>% bake(test_bake)
+#    %>% dplyr::select(all_of(selected_features), label)
+#    train_bake_x_selected <- train_bake_x %>% dplyr::select(all_of(selected_features))
+#    
+#    FS <- cfs(label ~., data = datasets[[4]])
+#    
+#    LDA_model <- lda(label~., train_bake)
+#    LDA_preds <- data.frame(predict(LDA_model, test_bake, type = 'prob')$posterior)
+#    LDA_preds$label <- test_bake$label
+#    #AUC
+#    g <- roc(label ~ X1, data = LDA_preds, direction = "<")
+#    AUC <- g$auc
+#    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", AUC)
+#    print(AUC)
+#    
+#    brier <- brier_class_vec(LDA_preds$label, LDA_preds$X1)
+#    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", brier)
+#    
+#    
+#    #####
+#    # QDA #needs CFS
+#    #####
+#    print("QDA")
     
-    FS <- cfs(label ~., data = datasets[[4]])
-    
-    LDA_model <- lda(label~., train_bake)
-    LDA_preds <- data.frame(predict(LDA_model, test_bake, type = 'prob')$posterior)
-    LDA_preds$label <- test_bake$label
-    #AUC
-    g <- roc(label ~ X1, data = LDA_preds, direction = "<")
-    AUC <- g$auc
-    metric_results[nrow(metric_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", AUC)
-    print(AUC)
-    
-    
-    #####
-    # QDA #needs CFS
-    #####
-    LDA_model <- train(data.frame(dplyr::select(train_bake,-label)), train_bake$label, method="stepLDA", trControl=trainControl(method="cv", number = 2, classProbs = TRUE, summaryFunction = BigSummary), metric = "partialGini",
-                       #tuneGrid = expand.grid(maxvar = (floor(3*ncol(train)/4):ncol(train)), direction = "forward"),
-                       allowParallel = TRUE)
-    #works but suboptimal
-    LDA_model <- lda(label~., data = train_bake)
-    LDA_preds <- data.frame(predict(LDA_model, test_bake, type = 'prob')$posterior)
-    LDA_preds$label <- test_bake$label
-    #AUC
-    g <- roc(label ~ X1, data = LDA_preds, direction = "<")
-    AUC <- g$auc
-    metric_results[nrow(metric_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", AUC)
-    print(AUC)
+#    QDA_model <- train(data.frame(dplyr::select(train_bake,-label)), train_bake$label, method="stepLDA", trControl=trainControl(method="cv", number = 2, classProbs = TRUE, summaryFunction = BigSummary), metric = "partialGini",
+#                       #tuneGrid = expand.grid(maxvar = (floor(3*ncol(train)/4):ncol(train)), direction = "forward"),
+#                       allowParallel = TRUE)
+#    #works but suboptimal
+#    LDA_model <- lda(label~., data = train_bake)
+#    LDA_preds <- data.frame(predict(LDA_model, test_bake, type = 'prob')$posterior)
+#    LDA_preds$label <- test_bake$label
+#    #AUC
+#    g <- roc(label ~ X1, data = LDA_preds, direction = "<")
+#    AUC <- g$auc
+#    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", AUC)
+#    print(AUC)
     
     
     
@@ -219,108 +220,123 @@ for(dataset in datasets) {
     #####
     # CTREE
     #####
+#   print("CTREE")    
+#    set.seed(innerseed)
+#    CTREE_model <- train(MINIMAL_recipe, data = train, method = "ctree", trControl = ctrl,
+#          tuneGrid = expand.grid(mincriterion = hyperparameters_CTREE$mincriterion), 
+#          allowParallel = TRUE)
+#    
+#    CTREE_preds <- predict(CTREE_model, test, type = 'probs')
+#    CTREE_preds$label <- test$label
+#    #AUC
+#    g <- roc(label ~ X1, data = CTREE_preds, direction = "<")
+#    AUC <- g$auc
+#    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "CTREE", AUC)
+#    print(AUC)
+#    #Brier
+#    brier <- brier_class_vec(CTREE_preds$label, CTREE_preds$X1)
+#    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "CTREE", brier)
+#    
+#    #PG
+#    pg <- partialGini(CTREE_preds$X1, CTREE_preds$label, 0.4)
+#    pg
     
-    set.seed(innerseed)
-    CTREE_model <- train(TREE_recipe, data = train, method = "ctree", trControl = ctrl,
-          tuneGrid = expand.grid(mincriterion = hyperparameters_CTREE$mincriterion),
-          metric = "Brier", maximize = FALSE)
-    
-    CTREE_preds <- predict(CTREE_model, test, type = 'probs')
-    CTREE_preds$label <- test$label
-    #AUC
-    g <- roc(label ~ X1, data = CTREE_preds, direction = "<")
-    AUC <- g$auc
-    metric_results[nrow(metric_results) + 1,] = list(dataset_vector[dataset_counter], i, "CTREE", AUC)
-    print(AUC)
-    
-    #PG
-    pg <- partialGini(CTREE_preds$X1, CTREE_preds$label, 0.4)
-    pg
-    
-    #Brier
-    bs <- mean(((as.numeric(CTREE_preds$label)-1) - CTREE_preds$X1)^2)
-    bs
-  
-    
+
     #####
     # RF
     #####
-    modellist <- list()
-    for (ntree in hyperparameters_RF$ntrees){
-      set.seed(innerseed)
-      RF_model <- train(TREE_recipe, data = train, method = "rf", trControl = ctrl,
-                        tuneGrid = expand.grid(mtry = hyperparameters_RF$mtry),
-                        ntree = ntree, maximize = TRUE, allowParallel = TRUE)
-      key <- toString(ntree)
-      modellist[[key]] <- RF_model
-    }
+#    print("RF")
     
     
-    #AUC
-    RF_model_AUC <- extractBestModel(modellist, "AUCROC")
-    RF_preds_AUC <- data.frame(predict(RF_model_AUC, test, type = 'probs'))
-    names(RF_preds_AUC) <- c("X0", "X1")
-    RF_preds_AUC$label <- test$label
-    g <- roc(label ~ X1, data = RF_preds_AUC, direction = "<")
-    AUC <- g$auc
-    metric_results[nrow(metric_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", AUC)
-    print(AUC)
     
-    #PG
-    RF_model_PG <- extractBestModel(modellist, "partialGini")
-    RF_preds_PG <- data.frame(predict(RF_model_PG, test, type = 'probs'))
-    names(RF_preds_PG) <- c("X0", "X1")
-    RF_preds_PG$label <- test$label
-    pg <- partialGini(RF_preds_PG$X1, RF_preds_PG$label, 0.4)
-    pg
     
-    #Brier
-    RF_model_Brier <- extractBestModel(modellist, "Brier")
-    RF_preds_Brier <- data.frame(predict(RF_model_Brier, test, type = 'probs'))
-    names(RF_preds_Brier) <- c("X0", "X1")
-    RF_preds_Brier$label <- test$label
-    bs <- mean(((as.numeric(RF_preds_Brier$label)-1) - RF_preds_Brier$X1)^2)
-    bs
     
+    
+    
+    source("./src/hyperparameters.R")
+    
+#    modellist <- list()
+#    for (ntree in c(100,250,500,750,1000)){
+#      set.seed(innerseed)
+#      print(ntree)
+#      RF_model <- train(label~., data = train, method = "ranger", trControl = trainControl(method = "cv", number = innerfolds, classProbs = TRUE, summaryFunction = twoClassSummary, search = "grid"),
+#                        tuneGrid = expand.grid(mtry = hyperparameters_RF$mtry,
+#                                               splitrule = hyperparameters_RF$mtry,
+#                                               min.node.size = hyperparameters_RF$min.node.size),
+#                        ntree = ntree, metric = "AUC")
+#      key <- toString(ntree)
+#      print(ntree)
+#      modellist[[key]] <- RF_model
+#    }
+#    
+#    
+#    #AUC
+#    RF_model_AUC <- extractBestModel(modellist, "AUCROC")
+#    RF_preds_AUC <- data.frame(predict(RF_model_AUC, test, type = 'probs'))
+#    names(RF_preds_AUC) <- c("X0", "X1")
+#    RF_preds_AUC$label <- test$label
+#    g <- roc(label ~ X1, data = RF_preds_AUC, direction = "<")
+#    AUC <- g$auc
+#    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", AUC)
+#    print(AUC)
+#    
+#    #PG
+##    RF_model_PG <- extractBestModel(modellist, "partialGini")
+##    RF_preds_PG <- data.frame(predict(RF_model_PG, test, type = 'probs'))
+##    names(RF_preds_PG) <- c("X0", "X1")
+##    RF_preds_PG$label <- test$label
+##    pg <- partialGini(RF_preds_PG$X1, RF_preds_PG$label, 0.4)
+##    pg_results[nrow(pg_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", pg)
+##    pg
+#    
+#    #Brier
+#    RF_model_Brier <- extractBestModel(modellist, "Brier")
+#    RF_preds_Brier <- data.frame(predict(RF_model_Brier, test, type = 'probs'))
+#    names(RF_preds_Brier) <- c("X0", "X1")
+#    RF_preds_Brier$label <- test$label
+#    bs <- mean(((as.numeric(RF_preds_Brier$label)-1) - RF_preds_Brier$X1)^2)
+#    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", bs)
+#    bs
+#    
     
     #####
     # XGB
     #####
+    print("XGB")
 
-    set.seed(innerseed)
-    
-    XGB_model <- train(label~., data = train_bake, method = "xgbTree", trControl = ctrl,
-                      tuneGrid = expand.grid(nrounds = hyperparameters_XGB$nrounds,
-                                             eta = hyperparameters_XGB$eta,
-                                             gamma = hyperparameters_XGB$gamma,
-                                             max_depth = hyperparameters_XGB$max_depth,
-                                             colsample_bytree = hyperparameters_XGB$colsample_bytree,
-                                             min_child_weight = hyperparameters_XGB$min_child_weight,
-                                             subsample = hyperparameters_XGB$subsample), allowParallel = TRUE)
-
-    XGB_preds <- predict(XGB_model, test_bake, type = 'prob')
-    XGB_preds$label <- test$label
-    #AUC
-    g <- roc(label ~ X1, data = XGB_preds, direction = "<")
-    AUC <- g$auc
-    metric_results[nrow(metric_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", AUC)
-    print(AUC)
-    
-    #PG
-    pg <- partialGini(XGB_preds$X1, XGB_preds$label, 0.4)
-    pg
-    
-    #Brier
-    bs <- mean(((as.numeric(XGB_preds$label)-1) - XGB_preds$X1)^2)
-    bs
-    
+#    set.seed(innerseed)
+#    
+#    XGB_model <- train(label~., data = train_bake, method = "xgbTree", trControl = ctrl,
+#                      tuneGrid = expand.grid(nrounds = hyperparameters_XGB$nrounds,
+#                                             eta = hyperparameters_XGB$eta,
+#                                             gamma = hyperparameters_XGB$gamma,
+#                                             max_depth = hyperparameters_XGB$max_depth,
+#                                             colsample_bytree = hyperparameters_XGB$colsample_bytree,
+#                                             min_child_weight = hyperparameters_XGB$min_child_weight,
+#                                             subsample = hyperparameters_XGB$subsample), allowParallel = TRUE)
+#
+#    XGB_preds <- predict(XGB_model, test_bake, type = 'prob')
+#    XGB_preds$label <- test$label
+#    #AUC
+#    g <- roc(label ~ X1, data = XGB_preds, direction = "<")
+#    AUC <- g$auc
+#    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", AUC)
+#    print(AUC)
+#    
+##    #PG
+##    pg <- partialGini(XGB_preds$X1, XGB_preds$label, 0.4)
+##    pg
+#    
+#    #Brier
+#    bs <- mean(((as.numeric(XGB_preds$label)-1) - XGB_preds$X1)^2)
+#    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", bs)
+#    bs
+#    
     
     
     
     #tidymodels
     # WERKT NOG NIET MET PG
-    
-    xgb_folds <- train %>% vfold_cv(v=5)
     
     xgb_model <- 
       parsnip::boost_tree(
@@ -340,44 +356,43 @@ for(dataset in datasets) {
     
     
     #WRONG PROBABLY
-    pg_2 <- new_prob_metric(
-      direction = "maximize",
-      fn = function(data, lev, model = NULL) {
-        # Extract true labels and predicted probabilities
-        truth <- as.numeric(data$truth == lev[1]) # Assuming lev[1] is the positive class
-        prob <- data$.pred_1 # Assuming .pred_1 column contains probabilities for positive class
-        
-        sorted_indices <- order(estimate, decreasing = TRUE)
-        sorted_probs <- estimate[sorted_indices]
-        sorted_actuals <- prob[sorted_indices]
-        
-        # Select subset with PD < 0.4
-        subset_indices <- which(sorted_probs < 0.4)
-        subset_probs <- sorted_probs[subset_indices]
-        subset_actuals <- sorted_actuals[subset_indices]
-        
-        # Check if there are both positive and negative cases in the subset
-        if (length(unique(subset_actuals)) > 1) {
-          # Calculate ROC curve for the subset
-          roc_subset <- pROC::roc(subset_actuals, subset_probs,
-                                  direction = "<", quiet = TRUE)
-          # Calculate AUC for the subset
-          partial_auc <- pROC::auc(roc_subset)
-          # Calculate partial Gini coefficient
-          (2 * partial_auc - 1)
-        } else {
-            # Set partial Gini to NA if there are not enough cases for ROC calculation
-            NA
-        }
-      }
-    )
-    
-    
-    metrics <- metric_set(roc_auc, brier_class)
-    
-    xgboost_tuned <- tune::tune_grid(
+#    pg_2 <- new_prob_metric(
+#      direction = "maximize",
+#      fn = function(data, lev, model = NULL) {
+#        # Extract true labels and predicted probabilities
+#        truth <- as.numeric(data$truth == lev[1]) # Assuming lev[1] is the positive class
+#        prob <- data$.pred_1 # Assuming .pred_1 column contains probabilities for positive class
+#        
+#        sorted_indices <- order(estimate, decreasing = TRUE)
+#        sorted_probs <- estimate[sorted_indices]
+#        sorted_actuals <- prob[sorted_indices]
+#        
+#        # Select subset with PD < 0.4
+#        subset_indices <- which(sorted_probs < 0.4)
+#        subset_probs <- sorted_probs[subset_indices]
+#        subset_actuals <- sorted_actuals[subset_indices]
+#        
+#        # Check if there are both positive and negative cases in the subset
+#        if (length(unique(subset_actuals)) > 1) {
+#          # Calculate ROC curve for the subset
+#          roc_subset <- pROC::roc(subset_actuals, subset_probs,
+#                                  direction = "<", quiet = TRUE)
+#          # Calculate AUC for the subset
+#          partial_auc <- pROC::auc(roc_subset)
+#          # Calculate partial Gini coefficient
+#          (2 * partial_auc - 1)
+#        } else {
+#            # Set partial Gini to NA if there are not enough cases for ROC calculation
+#            NA
+#        }
+#      }
+#    )
+#    
+#    
+#    metrics <- metric_set(roc_auc, brier_class)
+    xgb_tuned <- tune::tune_grid(
       object = xgb_wf,
-      resamples = xgb_folds,
+      resamples = inner_folds,
       grid = hyperparameters_XGB_tidy,
       metrics = metrics,
       control = tune::control_grid(verbose = TRUE)
@@ -387,28 +402,39 @@ for(dataset in datasets) {
       tune::show_best(metric = "roc_auc") %>%
       knitr::kable()
     
-    best_booster <- xgboost_tuned %>% select_best("roc_auc")
-    finalxgb__wf <- xgb_wf %>% finalize_workflow(best_booster)
-    final_xgb_fit <- finalxgb__wf %>% last_fit(folds$splits[[i]])
+    best_booster_auc <- xgb_tuned %>% select_best("roc_auc")
+    final_xgb_wf_auc <- xgb_wf %>% finalize_workflow(best_booster_auc)
+    final_xgb_fit_auc <- final_xgb_wf_auc %>% last_fit(folds$splits[[i]], metrics = metrics)
     
-    auc <- final_xgb_fit %>%
-      collect_metrics()
+    best_booster_brier <- xgb_tuned %>% select_best("brier_class")
+    final_xgb_wf_brier <- xgb_wf %>% finalize_workflow(best_booster_brier)
+    final_xgb_fit_brier <- final_xgb_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
+
     
-    roc_auc_value <- final_xgb_fit %>%
+    auc <- final_xgb_fit_auc %>%
       collect_metrics() %>%
       filter(.metric == "roc_auc") %>%
       pull(.estimate)
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", auc)
+    
+    brier <- final_xgb_fit_brier %>%
+      collect_metrics() %>%
+      filter(.metric == "brier_class") %>%
+      pull(.estimate)
+    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", brier)
+    
+    
     
 
-    final_xgb_fit %>%
-      collect_predictions() %>% 
-      roc_curve(label, .pred_X0) %>% 
-      autoplot()
+#    final_xgb_fit %>%
+#      collect_predictions() %>% 
+#      roc_curve(label, .pred_X0) %>% 
+#      autoplot()
 
     #####
     # LightGBM
     #####
-    
+    print("LGBM")
     lgbm_model <- 
       parsnip::boost_tree(
         mode = "classification",
@@ -426,7 +452,7 @@ for(dataset in datasets) {
   
     lgbm_tuned <- tune::tune_grid(
       object = lgbm_wf,
-      resamples = xgb_folds, #same folds as xgboost
+      resamples = inner_folds, #same folds as xgboost
       grid = hyperparameters_XGB_tidy, #same setting as xgboost
       metrics = metrics,
       control = tune::control_grid(verbose = TRUE)
@@ -449,29 +475,27 @@ for(dataset in datasets) {
       collect_metrics() %>%
       filter(.metric == "roc_auc") %>%
       pull(.estimate)
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "LGBM", auc)
+    
     brier <- final_lgbm_fit_brier %>%
       collect_metrics() %>%
       filter(.metric == "brier_class") %>%
       pull(.estimate)
+    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "LGBM", brier)
     
     
-    roc_auc_value <- final_lgbm_fit %>%
-      collect_metrics() %>%
-      filter(.metric == "roc_auc") %>%
-      pull(.estimate)
     
-    
-    final_lgbm_fit %>%
-      collect_predictions() %>% 
-      roc_curve(label, .pred_X0) %>% 
-      autoplot()
-    
+#    final_lgbm_fit %>%
+#      collect_predictions() %>% 
+#      roc_curve(label, .pred_X0) %>% 
+#      autoplot()
+#    
   }
   dataset_counter <- dataset_counter + 1
 }
 
 
-write.csv(metric_results, file = "./results/AUCROC_results.csv")
+#write.csv(metric_results, file = "./results/AUCROC_results.csv")
 
 stopCluster(cl)
 
