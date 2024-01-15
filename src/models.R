@@ -25,15 +25,10 @@ get_splineworthy_columns <- function(X) {
 #PG: cutoff = max probability of default
 partialGini <- function(preds, actuals, cutoff = 0.4) {
   
-  # Sort observations by predicted probabilities
-  sorted_indices <- order(preds, decreasing = TRUE)
-  sorted_preds <- preds[sorted_indices]
-  sorted_actuals <- actuals[sorted_indices]
-  
   # Select subset with PD < 0.4
-  subset_indices <- which(sorted_preds < cutoff)
-  subset_preds <- sorted_preds[subset_indices]
-  subset_actuals <- sorted_actuals[subset_indices]
+  subset_indices <- which(preds < cutoff)
+  subset_preds <- preds[subset_indices]
+  subset_actuals <- actuals[subset_indices]
   
   # Calculate ROC curve for the subset
   roc_subset <- pROC::roc(subset_actuals, subset_preds)
