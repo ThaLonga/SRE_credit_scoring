@@ -87,3 +87,10 @@ select_best_pg <- function(.data) {
       slice_max(partial_gini) %>%
       select(penalty, mixture, .config)})
 }
+
+collect_pg <- function(.data) {
+  suppressMessages({.data %>%
+      collect_predictions() %>%
+      summarise(partial_gini = partialGini(.pred_X1, label))
+  })
+}
