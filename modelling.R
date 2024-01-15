@@ -250,19 +250,30 @@ plot(RE_model,
 #testing WORKS
 rules <- RE_model$finalModel$rules$description
 # Split the rule into individual conditions
-conditions <- strsplit(rules, " & ")[[1]]
+conditions <- strsplit(rules, " & ")
+
+#####
+train_rule_baked <- TREE_recipe %>% prep() %>% bake(train)
+#####
 
 # Add 'train$' before each condition
-conditions_with_train <- paste("train$", conditions, sep = "")
+conditions_with_train <- lapply(conditions, function(x) paste("train_rule_baked$", x, sep = ""))
 
 # Combine the conditions with ' & ' separator
-final_rule <- parse(text = paste(conditions_with_train, collapse = " & "))
+rule_list <- lapply(conditions_with_train, function (x) parse(text = paste(x, collapse = " & ")))
 
-subset_train <- train[eval(final_rule), ]
+train_rules <- train_rule_baked
+for (i in seq_along(rule_list)) {
+  rule_result <- eval(rule_list[[i]])
+  column_name <- paste0("rule_", i)
+  train_rules[column_name] <- rule_result
+}
+#after which winsorization and 0.4 normalization should be applied
 
 
 
-#AUC
+
+AUC
 xpreds <- x_test
 xpreds$good <- y_test
 prob=predict(RE_model, newdata = data.frame(x_test), type=c("response"))
