@@ -110,12 +110,12 @@ for(dataset in datasets) {
       control = tune::control_grid(verbose = TRUE)
     )
     
-    best_booster_auc <- LRR_tuned %>% select_best("roc_auc")
-    final_LRR_wf_auc <- LRR_wf %>% finalize_workflow(best_booster_auc)
+    best_model_auc <- LRR_tuned %>% select_best("roc_auc")
+    final_LRR_wf_auc <- LRR_wf %>% finalize_workflow(best_model_auc)
     final_LRR_fit_auc <- final_LRR_wf_auc %>% last_fit(folds$splits[[i]], metrics = metrics)
     
-    best_booster_brier <- LRR_tuned %>% select_best("brier_class")
-    final_LRR_wf_brier <- LRR_wf %>% finalize_workflow(best_booster_brier)
+    best_model_brier <- LRR_tuned %>% select_best("brier_class")
+    final_LRR_wf_brier <- LRR_wf %>% finalize_workflow(best_model_brier)
     final_LRR_fit_brier <- final_LRR_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
     
     
@@ -220,32 +220,31 @@ for(dataset in datasets) {
     #####
     # CTREE
     #####
-#   print("CTREE")    
-#    set.seed(innerseed)
-#    CTREE_model <- train(MINIMAL_recipe, data = train, method = "ctree", trControl = ctrl,
-#          tuneGrid = expand.grid(mincriterion = hyperparameters_CTREE$mincriterion), 
-#          allowParallel = TRUE)
-#    
-#    CTREE_preds <- predict(CTREE_model, test, type = 'probs')
-#    CTREE_preds$label <- test$label
-#    #AUC
-#    g <- roc(label ~ X1, data = CTREE_preds, direction = "<")
-#    AUC <- g$auc
-#    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "CTREE", AUC)
-#    print(AUC)
-#    #Brier
-#    brier <- brier_class_vec(CTREE_preds$label, CTREE_preds$X1)
-#    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "CTREE", brier)
-#    
-#    #PG
-#    pg <- partialGini(CTREE_preds$X1, CTREE_preds$label, 0.4)
-#    pg
+   print("CTREE")    
+    set.seed(innerseed)
+    CTREE_model <- train(label ~., data = train, method = "ctree", trControl = ctrl,
+          tuneGrid = expand.grid(mincriterion = hyperparameters_CTREE$mincriterion), 
+          allowParallel = TRUE)
     
-
+    CTREE_preds <- predict(CTREE_model, test, type = 'probs')
+    CTREE_preds$label <- test$label
+    #AUC
+    g <- roc(label ~ X1, data = CTREE_preds, direction = "<")
+    AUC <- g$auc
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "CTREE", AUC)
+    print(AUC)
+    #Brier
+    brier <- brier_class_vec(CTREE_preds$label, CTREE_preds$X1)
+    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "CTREE", brier)
+    
+    #PG
+    pg <- partialGini(CTREE_preds$X1, CTREE_preds$label, 0.4)
+    pg
+   
     #####
     # RF
     #####
-#    print("RF")
+    print("RF")
     
     
     
@@ -255,32 +254,33 @@ for(dataset in datasets) {
     
     source("./src/hyperparameters.R")
     
-#    modellist <- list()
-#    for (ntree in c(100,250,500,750,1000)){
-#      set.seed(innerseed)
-#      print(ntree)
-#      RF_model <- train(label~., data = train, method = "ranger", trControl = trainControl(method = "cv", number = innerfolds, classProbs = TRUE, summaryFunction = twoClassSummary, search = "grid"),
-#                        tuneGrid = expand.grid(mtry = hyperparameters_RF$mtry,
-#                                               splitrule = hyperparameters_RF$mtry,
-#                                               min.node.size = hyperparameters_RF$min.node.size),
-#                        ntree = ntree, metric = "AUC")
-#      key <- toString(ntree)
-#      print(ntree)
-#      modellist[[key]] <- RF_model
-#    }
-#    
-#    
-#    #AUC
-#    RF_model_AUC <- extractBestModel(modellist, "AUCROC")
-#    RF_preds_AUC <- data.frame(predict(RF_model_AUC, test, type = 'probs'))
-#    names(RF_preds_AUC) <- c("X0", "X1")
-#    RF_preds_AUC$label <- test$label
-#    g <- roc(label ~ X1, data = RF_preds_AUC, direction = "<")
-#    AUC <- g$auc
-#    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", AUC)
-#    print(AUC)
-#    
-#    #PG
+    modellist <- list()
+    for (ntree in c(100,250,500,750,1000)){
+      set.seed(innerseed)
+      print(ntree)
+      RF_model <- train(MINIMAL_recipe, data = train, method = "ranger", trControl = ctrl,
+                        tuneGrid = expand.grid(mtry = hyperparameters_RF$mtry,
+                                               splitrule = hyperparameters_RF$splitrule,
+                                               min.node.size = hyperparameters_RF$min.node.size),
+                        num.tree = ntree, 
+                        metric = "AUCROC")
+      key <- toString(ntree)
+      print(ntree)
+      modellist[[key]] <- RF_model
+    }
+    
+    
+    #AUC
+    RF_model_AUC <- extractBestModel(modellist, "AUCROC")
+    RF_preds_AUC <- data.frame(predict(RF_model_AUC, test_bake, type = 'prob'))
+    names(RF_preds_AUC) <- c("X0", "X1")
+    RF_preds_AUC$label <- test_bake$label
+    g <- roc(label ~ X1, data = RF_preds_AUC, direction = "<")
+    AUC <- g$auc
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", AUC)
+    print(AUC)
+    
+    #PG
 ##    RF_model_PG <- extractBestModel(modellist, "partialGini")
 ##    RF_preds_PG <- data.frame(predict(RF_model_PG, test, type = 'probs'))
 ##    names(RF_preds_PG) <- c("X0", "X1")
@@ -288,51 +288,61 @@ for(dataset in datasets) {
 ##    pg <- partialGini(RF_preds_PG$X1, RF_preds_PG$label, 0.4)
 ##    pg_results[nrow(pg_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", pg)
 ##    pg
-#    
-#    #Brier
-#    RF_model_Brier <- extractBestModel(modellist, "Brier")
-#    RF_preds_Brier <- data.frame(predict(RF_model_Brier, test, type = 'probs'))
-#    names(RF_preds_Brier) <- c("X0", "X1")
-#    RF_preds_Brier$label <- test$label
-#    bs <- mean(((as.numeric(RF_preds_Brier$label)-1) - RF_preds_Brier$X1)^2)
-#    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", bs)
-#    bs
-#    
+    
+    #Brier
+    RF_model_Brier <- extractBestModel(modellist, "Brier")
+    RF_preds_Brier <- data.frame(predict(RF_model_Brier, test_bake, type = 'prob'))
+    names(RF_preds_Brier) <- c("X0", "X1")
+    RF_preds_Brier$label <- test_bake$label
+    bs <- mean(((as.numeric(RF_preds_Brier$label)-1) - RF_preds_Brier$X1)^2)
+    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", bs)
+    bs
+    
     
     #####
     # XGB
     #####
     print("XGB")
 
-#    set.seed(innerseed)
-#    
-#    XGB_model <- train(label~., data = train_bake, method = "xgbTree", trControl = ctrl,
-#                      tuneGrid = expand.grid(nrounds = hyperparameters_XGB$nrounds,
-#                                             eta = hyperparameters_XGB$eta,
-#                                             gamma = hyperparameters_XGB$gamma,
-#                                             max_depth = hyperparameters_XGB$max_depth,
-#                                             colsample_bytree = hyperparameters_XGB$colsample_bytree,
-#                                             min_child_weight = hyperparameters_XGB$min_child_weight,
-#                                             subsample = hyperparameters_XGB$subsample), allowParallel = TRUE)
-#
-#    XGB_preds <- predict(XGB_model, test_bake, type = 'prob')
-#    XGB_preds$label <- test$label
-#    #AUC
-#    g <- roc(label ~ X1, data = XGB_preds, direction = "<")
-#    AUC <- g$auc
-#    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", AUC)
-#    print(AUC)
-#    
-##    #PG
-##    pg <- partialGini(XGB_preds$X1, XGB_preds$label, 0.4)
-##    pg
-#    
-#    #Brier
-#    bs <- mean(((as.numeric(XGB_preds$label)-1) - XGB_preds$X1)^2)
-#    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", bs)
-#    bs
-#    
+    set.seed(innerseed)
     
+    XGB_model <- train(TREE_recipe, data = train, method = "xgbTree", trControl = ctrl,
+                      tuneGrid = expand.grid(nrounds = hyperparameters_XGB$nrounds,
+                                             eta = hyperparameters_XGB$eta,
+                                             gamma = hyperparameters_XGB$gamma,
+                                             max_depth = hyperparameters_XGB$max_depth,
+                                             colsample_bytree = hyperparameters_XGB$colsample_bytree,
+                                             min_child_weight = hyperparameters_XGB$min_child_weight,
+                                             subsample = hyperparameters_XGB$subsample),
+                      allowParallel = TRUE
+                      )
+
+    XGB_preds <- predict(XGB_model, test, type = 'prob')
+    XGB_preds$label <- test$label
+    #AUC
+    best_model_auc <- getModelInfo("glmnet")$grid %>%
+      filter(AUC == max(AUC)) %>%
+      slice(1) %>%
+      .$model
+    
+    
+    
+    
+    g <- roc(label ~ X1, data = XGB_preds, direction = "<")
+    AUC <- g$auc
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", AUC)
+    print(AUC)
+    
+#    #PG
+#    pg <- partialGini(XGB_preds$X1, XGB_preds$label, 0.4)
+#    pg
+    
+    #Brier
+    bs <- mean(((as.numeric(XGB_preds$label)-1) - XGB_preds$X1)^2)
+    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", bs)
+    bs
+    
+   
     
     
     #tidymodels

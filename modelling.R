@@ -116,7 +116,7 @@ saveRDS(LR_model_final, file="./models/LR_model_final.rds")
 # LR-R
 #####################
 
-LR_R_ctrl = trainControl(method = "cv", number = n_folds, classProbs = TRUE, summaryFunction = twoClassSummary)
+LR_R_ctrl = trainControl(method = "cv", number = innerfolds, classProbs = TRUE, summaryFunction = twoClassSummary)
 
 train = train  %>% 
         mutate(label = factor(label, 
@@ -200,34 +200,57 @@ cv_mars$results %>%
 #####Rule ensembles
 ###################
 
-fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 1,
+fitControl <- trainControl(method = "cv", number = 3,
                            classProbs = TRUE, ## get probabilities, not class labels
-                           summaryFunction = BigSummary, verboseIter = TRUE)
+                           summaryFunction = BigSummary, verboseIter = TRUE,
+                           search = "grid")
 
 #ADJUST
-preGrid <- getModelInfo("pre")[[1]]$grid(
-  maxdepth = 2L:3L,
+preGrid <- getModelInfo("pre")[[1]]$grid( 
+  maxdepth = 3,
   learnrate = c(.01, .05, .1),
-  penalty.par.val = c("lambda.1se", "lambda.min"),
-  sampfrac = c(0.5, 0.75, 1.0))
+  penalty.par.val = c("lambda.1se"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
+  sampfrac = 1,
+  use.grad = TRUE,
+  #mtry = sqrt(ncol(train_bake_x)*c(0.1,0.25,0.5,1,2,4)),
+) #adaptive lasso with ridge weights
+# !! nlambda by default 100 models 
 
 
-RE_model <- pre(label ~ .,
-               family = binomial,
-               data = train,
-               verbose = TRUE)
+RE_model <- train(TREE_recipe, data = train, method = "pre",
+                  ntrees = 50, family = "binomial", trControl = fitControl,
+                  tuneGrid = preGrid, ad.alpha = 0, singleconditions = TRUE,
+                  winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
+                  verbose = TRUE,
+                  metric = "AUCROC")
 
-RE_fit <- fit_xy(RE_model, x_train, y_train)
+#RE_model <- pre(label ~ .,
+#               family = binomial,
+#               use.grad = TRUE,
+#               ad.alpha = 0,
+#               data = train_bake,
+#               singleconditions = TRUE,
+#               winsfrac = 0.05,
+#               normalize = TRUE, #same a priori influence as a typical rule
+#               verbose = TRUE)
 
-cvpre(RE_model,
-      k = 3,
-      verbose = TRUE)
+#RE_fit <- fit_xy(RE_model, x_train, y_train)
+
+#cvpre(RE_model,
+#      k = 3,
+#      verbose = TRUE)
+
+
+plot(RE_model,
+     xlab = list(cex = .7), ylab = list(cex = .7),
+     scales = list(cex=.7),
+     par.strip.text=list(cex=.7))
 
 
 #testing WORKS
-rule <- RE_model$rules$description[3]
+rules <- RE_model$finalModel$rules$description
 # Split the rule into individual conditions
-conditions <- strsplit(rule, " & ")[[1]]
+conditions <- strsplit(rules, " & ")[[1]]
 
 # Add 'train$' before each condition
 conditions_with_train <- paste("train$", conditions, sep = "")

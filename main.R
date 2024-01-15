@@ -230,6 +230,7 @@ for(dataset in datasets) {
     # XGB
     #####
 
+    # test on pure "train" without any preprocessing
     set.seed(innerseed)
     
     XGB_model <- train(label~., data = train_bake, method = "xgbTree", trControl = ctrl,
