@@ -94,3 +94,24 @@ collect_pg <- function(.data) {
       summarise(partial_gini = partialGini(.pred_X1, label))
   })
 }
+
+#to fit rules from pre package on dataframe that is baked with TREE_recipe
+#obtain by applying "$rules$description" on model
+fit_rules <- function(dataframe, rules) {
+  # Split the rule into individual conditions
+  conditions <- strsplit(rules, " & ")
+
+  # Add 'train$' before each condition
+  conditions_with_dataframe <- lapply(conditions, function(x) paste(deparse(substitute(dataframe)),"$", x, sep = ""))
+  
+  # Combine the conditions with ' & ' separator
+  rule_list <- lapply(conditions_with_dataframe, function (x) parse(text = paste(x, collapse = " & ")))
+  
+  train_rules <- dataframe
+  for (i in seq_along(rule_list)) {
+    rule_result <- eval(rule_list[[i]])
+    column_name <- paste0("rule_", i)
+    train_rules[column_name] <- rule_result
+  }
+  return(train_rules)
+}

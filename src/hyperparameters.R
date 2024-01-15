@@ -60,6 +60,16 @@ hyperparameters_XGB_tidy <- expand.grid(list(
 
 #LightGBM eventueel
 
+preGrid <- getModelInfo("pre")[[1]]$grid( 
+  maxdepth = 3,
+  learnrate = c(.01, .05, .1),
+  penalty.par.val = c("lambda.1se"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
+  sampfrac = 1,
+  use.grad = TRUE,
+  #mtry = sqrt(ncol(train_bake_x)*c(0.1,0.25,0.5,1,2,4)),
+) #adaptive lasso with ridge weights
+# !! nlambda by default 100 models 
+
 #hyperparameters_
 #hyperparameters_
 #hyperparameters_
