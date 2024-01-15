@@ -77,3 +77,13 @@ extractBestModel <- function(modellist, metric = "AUCROC") {
   # Return the best model
   return(best_model)
 }
+
+select_best_pg <- function(.data) {
+  suppressMessages({.data %>%
+      collect_predictions(summarize = TRUE) %>%
+      group_by(penalty, mixture, .config) %>%
+      summarise(partial_gini = partialGini(.pred_X1, label)) %>%
+      ungroup() %>%
+      slice_max(partial_gini) %>%
+      select(penalty, mixture, .config)})
+}

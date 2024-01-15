@@ -80,8 +80,8 @@ n_folds = 5
 
 dataset = "german"
 
-load(paste("data/GOLD/x_",dataset,".Rda", sep=""))
-load(paste("data/GOLD/y_",dataset,".Rda", sep=""))
+load(paste("data/GOLD/",dataset,".Rda", sep=""))
+load(paste("data/GOLD/",dataset,".Rda", sep=""))
 
 set.seed(123)
 train_indices <- sample(1:nrow(x), 0.8 * nrow(x))
