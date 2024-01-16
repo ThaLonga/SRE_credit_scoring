@@ -509,27 +509,53 @@ for(dataset in datasets) {
     #####
     # HRE
     #####
+    set.seed(5)
     
-    HRE_model <- gpe(label ~., data = (MINIMAL_recipe%>%prep()%>%bake(train)),
+    if(dataset_counter==1) {
+      # Find the three levels with the lowest frequency
+      train_HRE <- train
+      test_HRE <- test
+      lowest_levels <- names(sort(table(train$X4))[1:4])
+      
+      # Combine the three lowest levels into a new level, for example, "Other"
+      train_HRE$X4 <- factor(ifelse(train_HRE$X4 %in% lowest_levels, "Other", as.character(train_HRE$X4)))
+      test_HRE$X4 <- factor(ifelse(test_HRE$X4 %in% lowest_levels, "Other", as.character(test_HRE$X4)))
+      HRE_recipe <- train_HRE %>% recipe(label~.) %>% 
+        step_impute_mean(all_numeric_predictors()) %>%
+        step_impute_mode(all_string_predictors()) %>%
+        step_impute_mode(all_factor_predictors()) %>%
+        step_zv(all_predictors()) %>%
+        step_dummy(all_string_predictors()) %>%
+        step_dummy(all_factor_predictors()) %>%
+        step_zv(all_predictors())
+      train_HRE <- HRE_recipe %>%
+        prep() %>%
+        bake(train_HRE)
+      test_HRE <- HRE_recipe %>%
+        prep() %>%
+        bake(test_HRE)
+    }
+    
+    HRE_model <- gpe(label ~., data = (train_HRE),
                      base_learners = list(gpe_trees(learnrate = RE_model$bestTune$learnrate, ntrees = 500),#learn rate based on AUC
-                                          gpe_linear(),
-                                          gpe_earth(degree = 3, nk = 50)),
+                                          gpe_earth(degree = 3, nk = 50),
+                                          gpe_linear()),
                      penalized_trainer = gpe_cv.glmnet(family = "binomial", ad.alpha = 0, weights = NULL))
     
-    RE_preds <- predict(HRE_model, test, type = 'probs')
-    RE_preds$label <- test$label
+    HRE_preds <- data.frame(predict(HRE_model, test_HRE, type = 'response'))
+    HRE_preds$label <- test$label
     #AUC
-    g <- roc(label ~ X1, data = RE_preds, direction = "<")
+    g <- roc(label ~ lambda.1se, data = HRE_preds, direction = "<")
     AUC <- g$auc
-    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", AUC)
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "HRE", AUC)
     print(AUC)
     #Brier
-    brier <- brier_class_vec(RE_preds$label, RE_preds$X1)
-    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", brier)
+    brier <- brier_class_vec(HRE_preds$label, HRE_preds$lambda.1se)
+    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "HRE", brier)
     
     #PG
-    pg <- partialGini(RE_preds$X1, RE_preds$label)
-    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", pg)
+    pg <- partialGini(HRE_preds$X1, HRE_preds$label)
+    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "HRE", pg)
     
   }
   dataset_counter <- dataset_counter + 1
