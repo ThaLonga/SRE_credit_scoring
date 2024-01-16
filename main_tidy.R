@@ -82,6 +82,10 @@ for(dataset in datasets) {
 
     innerseed <- i
     
+    ############################################################################
+    # SINGLE CLASSIFIERS
+    ############################################################################
+    
     #####
     # LRR
     #####
@@ -252,6 +256,10 @@ for(dataset in datasets) {
     #PG
     pg <- partialGini(CTREE_preds$X1, CTREE_preds$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "CTREE", pg)
+    
+    ############################################################################
+    # HOMOGENEOUS ENSEMBLES
+    ############################################################################
     
     #####
     # RF
@@ -471,6 +479,9 @@ for(dataset in datasets) {
       collect_pg()
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", pg)
     
+    ############################################################################
+    # HETEROGENEOUS (RULE) ENSEMBLES 
+    ############################################################################
     
     #####
     # PRE
@@ -552,41 +563,57 @@ for(dataset in datasets) {
     pg <- partialGini(HRE_preds$X1, HRE_preds$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "HRE", pg)
     
+    #####
+    # SRE
+    #####
+    
+    #extract smooth term names for SRE
+    smooth_terms <- grep("s\\(", unlist(str_split(as.character(formula(GAM_model))[3], " \\+ ")), value = TRUE)
+    # Extract and fitted values for each smooth term
+    fitted_smooths_train <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(train_bake)))
+    fitted_smooths_test <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(test_bake)))
+    colnames(fitted_smooths_train) <- smooth_terms
+    colnames(fitted_smooths_test) <- smooth_terms
+    for (i in seq_along(smooth_terms)) {
+      current_smooth <- smooth_terms[i]
+      fitted_values_train <- predict(GAM_model, type = "terms")[, current_smooth]
+      fitted_smooths_train[, i] <- fitted_values_train
+      fitted_values_test <- predict(GAM_model, test_bake, type = "terms")[, current_smooth]
+      fitted_smooths_test[, i] <- fitted_values_test 
+    }
+    
+    #save rules for SRE
+    train_rule_baked <- TREE_recipe %>% prep() %>% bake(train)
+    test_rule_baked <- TREE_recipe %>% prep() %>% bake(test)
+    
+    SRE_train_rules <- fit_rules(train_rule_baked, RE_model$finalModel$rules$description)
+    SRE_test_rules <- fit_rules(test_rule_baked, RE_model$finalModel$rules$description)
+    
+    SRE_train <- cbind(SRE_train_rules, fitted_smooths_train)
+    SRE_test <- cbind(SRE_test_rules, fitted_smooths_test)
+    
+    #adalasso with initial ridge weights
+    #INITIAL RIDGE
+    ridge1 <- cv.glmnet(label ~., data = SRE_train,
+                        family = "binomial",
+                        type.measure = "auc",
+                        nfold = innerfolds,
+                        alpha = 0)
+    ## The intercept estimate should be dropped.
+    best_ridge_coef <- as.numeric(coef(ridge1, s = ridge1$lambda.min))[-1]
+    ## Perform adaptive LASSO
+    alasso1 <- glmnet(label ~., data = SRE_train,
+                      family = "binomial",
+                      type.measure = "auc",
+                      alpha = 1,
+                      penalty.factor = 1 / abs(best_ridge_coef))
+    plot(alasso1, xvar = "lambda")
+    
   }
   dataset_counter <- dataset_counter + 1
-  
-  #####
-  # SRE
-  #####
-  
-  #extract smooth term names for SRE
-  smooth_terms <- grep("s\\(", unlist(str_split(as.character(formula(GAM_model))[3], " \\+ ")), value = TRUE)
-  # Extract and fitted values for each smooth term
-  fitted_smooths_train <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(train_bake)))
-  fitted_smooths_test <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(test_bake)))
-  colnames(fitted_smooths_train) <- smooth_terms
-  colnames(fitted_smooths_test) <- smooth_terms
-  for (i in seq_along(smooth_terms)) {
-    current_smooth <- smooth_terms[i]
-    fitted_values_train <- predict(GAM_model, type = "terms")[, current_smooth]
-    fitted_smooths_train[, i] <- fitted_values_train
-    fitted_values_test <- predict(GAM_model, test_bake, type = "terms")[, current_smooth]
-    fitted_smooths_test[, i] <- fitted_values_test 
-  }
-  
-  fitted_smooths
-  rule
 }
 
-#save rules for SRE
-train_rule_baked <- TREE_recipe %>% prep() %>% bake(train)
-test_rule_baked <- TREE_recipe %>% prep() %>% bake(test)
 
-SRE_train_rules <- fit_rules(train_rule_baked, RE_model$finalModel$rules$description)
-SRE_test_rules <- fit_rules(test_rule_baked, RE_model$finalModel$rules$description)
-
-SRE_train <- cbind(train_bake, fitted_smooths_train, SRE_train_rules)
-SRE_test <- cbind(test_bake, fitted_smooths_test, SRE_test_rules)
 
 
 #write.csv(metric_results, file = "./results/AUCROC_results.csv")
