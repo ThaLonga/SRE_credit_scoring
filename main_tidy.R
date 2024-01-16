@@ -176,6 +176,16 @@ for(dataset in datasets) {
     pg <- partialGini(GAM_preds$X1, GAM_preds$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "GAM", pg)
 
+    #extract smooth term names for SRE
+    smooth_terms <- grep("s\\(", unlist(str_split(as.character(formula(GAM_model))[3], " \\+ ")), value = TRUE)
+    # Extract and fitted values for each smooth term
+    fitted_smooths <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(GAM_model$model)))
+    colnames(fitted_smooths) <- smooth_terms
+    for (i in seq_along(smooth_terms)) {
+      current_smooth <- smooth_terms[i]
+      fitted_values <- predict(GAM_model, type = "terms")[, current_smooth]
+      fitted_smooths[, i] <- fitted_values
+    }
     
     #####
     # LDA #needs CFS step_corr tidy
@@ -475,14 +485,14 @@ for(dataset in datasets) {
     #####
     # PRE
     #####
-    
+    set.seed(innerseed)
     RE_model <- train(TREE_recipe, data = train, method = "pre",
                       ntrees = 500, family = "binomial", trControl = ctrl,
                       tuneGrid = preGrid, ad.alpha = 0, singleconditions = TRUE,
                       winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
                       verbose = TRUE,
                       metric = "AUCROC")
-    RE_learning_rate <- 
+    RE_learning_rate <- RE_model$bestTune$learnrate
     
     RE_preds <- predict(RE_model, test, type = 'probs')
     RE_preds$label <- test$label
@@ -536,6 +546,7 @@ for(dataset in datasets) {
         bake(test_HRE)
     }
     
+    set.seed(innerseed)
     HRE_model <- gpe(label ~., data = (train_HRE),
                      base_learners = list(gpe_trees(learnrate = RE_model$bestTune$learnrate, ntrees = 500),#learn rate based on AUC
                                           gpe_earth(degree = 3, nk = 50),
