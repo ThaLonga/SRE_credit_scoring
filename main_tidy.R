@@ -720,12 +720,16 @@ for(dataset in datasets) {
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
     
     #without parsnip
-    ridgetest <- cv.glmnet(label ~., data = SRE_train,
+    SRE_train_scaled_winsorized <- SRE_train
+    SRE_train_scaled_winsorized[lapply(SRE_train, n_distinct)>2] <- lapply((SRE_train[lapply(SRE_train, n_distinct)>2]), function(x) 0.4*(Winsorize(x, probs = c(0.025,0.975)))/sd(x))
+    
+    
+    ridgetest <- cv.glmnet(label ~., data = SRE_train_scaled_winsorized,
               family = "binomial",
               alpha = 0
               )
     coeftest <- coef(ridgetest)
-    finallasso <- cv.glmnet(label ~., data = SRE_train,
+    finallasso <- cv.glmnet(label ~., data = SRE_train_scaled_winsorized,
                             family = "binomial",
                             alpha = 1,
                             penalty.factors = coeftest)
@@ -746,11 +750,8 @@ for(dataset in datasets) {
     Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", brier)
     
     #PG
-    
     pg <- partialGini(test_preds_SRE$X1, test_preds_SRE$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
-    
-    
   }
   dataset_counter <- dataset_counter + 1
 }
