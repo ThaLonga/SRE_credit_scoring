@@ -720,8 +720,19 @@ for(dataset in datasets) {
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
     
     #without parsnip
+    #winsorization and scaling
     SRE_train_scaled_winsorized <- SRE_train
+    SRE_test_scaled_winsorized <- SRE_test
     SRE_train_scaled_winsorized[lapply(SRE_train, n_distinct)>2] <- lapply((SRE_train[lapply(SRE_train, n_distinct)>2]), function(x) 0.4*(Winsorize(x, probs = c(0.025,0.975)))/sd(x))
+    for (col in names(SRE_train)[sapply(SRE_train, function(x) n_distinct(x) > 2)]) {
+      # Calculate winsorization limits for the current column in SRE_train
+      winsor_limits <-  Winsorize(SRE_train[[col]], probs = c(0.025, 0.975))
+      
+      # Apply winsorization to the current column in both training and testing sets
+      SRE_train_scaled_winsorized[[col]] <- Winsorize(SRE_train[[col]], minval = min(winsor_limits), maxval = max(winsor_limits))
+      SRE_train_scaled_winsorized[[col]] <- 0.4*SRE_train_scaled_winsorized[[col]] / sd(SRE_train_scaled_winsorized[[col]])
+      SRE_test_scaled_winsorized[[col]] <- 0.4*Winsorize(SRE_test[[col]], minval = min(winsor_limits), maxval = max(winsor_limits)) / sd(SRE_train_scaled_winsorized[[col]])
+    }
     
     
     ridgetest <- cv.glmnet(label ~., data = SRE_train_scaled_winsorized,
@@ -736,8 +747,8 @@ for(dataset in datasets) {
     l1se_ind <- which(finallasso$lambda == finallasso$lambda.1se)
     finallasso$nzero[l1se_ind]
     coef(finallasso)
-    test_preds_SRE <- data.frame(predict(finallasso, SRE_test, s = "lambda.1se", type = "response"))
-    test_preds_SRE$label <- SRE_test$label
+    test_preds_SRE <- data.frame(predict(finallasso, SRE_test_scaled_winsorized, s = "lambda.1se", type = "response"))
+    test_preds_SRE$label <- SRE_test_scaled_winsorized$label
     colnames(test_preds_SRE) <- c("X1", "label")
     
     #AUC
