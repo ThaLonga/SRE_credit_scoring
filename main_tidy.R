@@ -117,8 +117,7 @@ for(dataset in datasets) {
     best_model_auc <- LRR_tuned %>% select_best("roc_auc")
     final_LRR_wf_auc <- LRR_wf %>% finalize_workflow(best_model_auc)
     final_LRR_fit_auc <- final_LRR_wf_auc %>% last_fit(folds$splits[[i]], metrics = metrics)
-    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", AUC)
-    
+
     best_model_brier <- LRR_tuned %>% select_best("brier_class")
     final_LRR_wf_brier <- LRR_wf %>% finalize_workflow(best_model_brier)
     final_LRR_fit_brier <- final_LRR_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
@@ -594,20 +593,131 @@ for(dataset in datasets) {
     
     #adalasso with initial ridge weights
     #INITIAL RIDGE
-    ridge1 <- cv.glmnet(label ~., data = SRE_train,
-                        family = "binomial",
-                        type.measure = "auc",
-                        nfold = innerfolds,
-                        alpha = 0)
-    ## The intercept estimate should be dropped.
-    best_ridge_coef <- as.numeric(coef(ridge1, s = ridge1$lambda.min))[-1]
+
+    set.seed(i)
+    inner_folds_SRE <- SRE_train %>% vfold_cv(v=5)
+    ridge1 <- 
+      parsnip::logistic_reg(
+        mode = "classification",
+        mixture = tune(),
+        penalty = tune()
+        ) %>%
+      set_engine("glmnet")
+    
+    LRR_wf <- workflow() %>%
+      add_formula(formula = label ~.) %>%
+      add_model(ridge1)
+    
+    LRR_tuned <- tune::tune_grid(
+      object = LRR_wf,
+      resamples = inner_folds_SRE,
+      grid = expand.grid(list(mixture = 0, penalty = seq(0.001,5,length=100))),
+      metrics = metrics,
+      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
+    )
+    
+    best_model_auc <- LRR_tuned %>% select_best("roc_auc")
+    final_LRR_wf_auc <- LRR_wf %>% finalize_workflow(best_model_auc) %>% fit(SRE_train)
+    auc_ridge_coef <- final_LRR_wf_auc%>%extract_fit_parsnip()%>%tidy()%>%select(estimate)
+
+    best_model_brier <- LRR_tuned %>% select_best("brier_class")
+    final_LRR_wf_brier <- LRR_wf %>% finalize_workflow(best_model_brier) %>% fit(SRE_train)
+    brier_ridge_coef <- final_LRR_wf_brier%>%extract_fit_parsnip()%>%tidy()%>%select(estimate)
+    
+    best_model_pg <- LRR_tuned %>% select_best_pg()
+    final_LRR_wf_pg <- LRR_wf %>% finalize_workflow(best_model_pg) %>% fit(SRE_train)
+    pg_ridge_coef <- final_LRR_wf_pg%>%extract_fit_parsnip()%>%tidy()%>%select(estimate)
+    
     ## Perform adaptive LASSO
-    alasso1 <- glmnet(label ~., data = SRE_train,
-                      family = "binomial",
-                      type.measure = "auc",
-                      alpha = 1,
-                      penalty.factor = 1 / abs(best_ridge_coef))
-    plot(alasso1, xvar = "lambda")
+
+    adaLasso_auc <- 
+      parsnip::logistic_reg(
+        mode = "classification",
+        mixture = tune(),
+        penalty = tune()
+      ) %>%
+      set_engine("glmnet", penalty.factor = auc_ridge_coef$estimate[-1])
+    
+    adaLasso_wf_auc <- workflow() %>%
+      add_formula(formula = label ~.) %>%
+      add_model(adaLasso_auc)
+    
+    adaLasso_brier <- 
+      parsnip::logistic_reg(
+        mode = "classification",
+        mixture = tune(),
+        penalty = tune()
+      ) %>%
+      set_engine("glmnet", penalty.factor = brier_ridge_coef$estimate[-1])
+    
+    adaLasso_wf_brier <- workflow() %>%
+      add_formula(formula = label ~.) %>%
+      add_model(adaLasso_brier)
+    
+    adaLasso_pg <- 
+      parsnip::logistic_reg(
+        mode = "classification",
+        mixture = tune(),
+        penalty = tune()
+      ) %>%
+      set_engine("glmnet", penalty.factor = pg_ridge_coef$estimate[-1])
+    
+    adaLasso_wf_pg <- workflow() %>%
+      add_formula(formula = label ~.) %>%
+      add_model(adaLasso_pg)
+    
+    adaLasso_tuned_auc <- tune::tune_grid(
+      object = adaLasso_wf_auc,
+      resamples = inner_folds_SRE,
+      grid = expand.grid(list(mixture = 1, penalty = seq(0.001,5,length=100))), 
+      metrics = metrics,
+      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
+    )
+    
+    adaLasso_tuned_brier <- tune::tune_grid(
+      object = adaLasso_wf_brier,
+      resamples = inner_folds_SRE,
+      grid = expand.grid(list(mixture = 1, penalty = seq(0.001,5,length=100))), 
+      metrics = metrics,
+      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
+    )
+    
+    adaLasso_tuned_pg <- tune::tune_grid(
+      object = adaLasso_wf_pg,
+      resamples = inner_folds_SRE,
+      grid = expand.grid(list(mixture = 1, penalty = seq(0.001,5,length=100))), 
+      metrics = metrics,
+      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
+    )
+    
+    #AUC
+    best_SRE_auc <- adaLasso_tuned_auc %>% select_best("roc_auc")
+    final_SRE_wf_auc <- adaLasso_wf_auc %>% finalize_workflow(best_SRE_auc)
+    SRE_auc_preds <- final_SRE_wf_auc %>% fit(SRE_train) %>% predict(SRE_test, type = "prob")
+    
+    SRE_auc_preds$label <- SRE_test$label
+    #AUC
+    g <- roc(label ~ .pred_X1, data = SRE_auc_preds, direction = "<")
+    AUC <- g$auc
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", AUC)
+
+    #Brier
+    best_SRE_brier <- adaLasso_tuned_brier %>% select_best("brier_class")
+    final_SRE_wf_brier <- adaLasso_wf_brier %>% finalize_workflow(best_SRE_brier)
+    SRE_brier_preds <- final_SRE_wf_brier%>% fit(SRE_train) %>% predict(SRE_test, type = "prob")
+    
+    SRE_brier_preds$label <- SRE_test$label
+    brier <- brier_class_vec(SRE_brier_preds$label, SRE_brier_preds$.pred_X1)
+    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", brier)
+    
+    #PG
+    best_SRE_pg <- adaLasso_tuned_pg %>% select_best_pg()
+    final_SRE_wf_pg <- adaLasso_wf_pg %>% finalize_workflow(best_SRE_pg)
+    SRE_pg_preds <- final_SRE_wf_pg %>% fit(SRE_train) %>% predict(SRE_test, type = "prob")
+    
+    SRE_pg_preds$label <- SRE_test$label
+    pg <- partialGini(SRE_pg_preds$.pred_X1, SRE_pg_preds$label)
+    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
     
   }
   dataset_counter <- dataset_counter + 1
