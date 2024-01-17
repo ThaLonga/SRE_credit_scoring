@@ -636,7 +636,7 @@ for(dataset in datasets) {
         mixture = tune(),
         penalty = tune()
       ) %>%
-      set_engine("glmnet", penalty.factor = auc_ridge_coef$estimate[-1])
+      set_engine("glmnet", penalty.factor = (as.vector(auc_ridge_coef$estimate[-1])))
     
     adaLasso_wf_auc <- workflow() %>%
       add_formula(formula = label ~.) %>%
@@ -669,7 +669,7 @@ for(dataset in datasets) {
     adaLasso_tuned_auc <- tune::tune_grid(
       object = adaLasso_wf_auc,
       resamples = inner_folds_SRE,
-      grid = expand.grid(list(mixture = 1, penalty = seq(0.001,5,length=100))), 
+      grid = expand.grid(list(mixture = 1, penalty = seq(0.001,0.1,length=100))), 
       metrics = metrics,
       control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
     )
@@ -685,7 +685,7 @@ for(dataset in datasets) {
     adaLasso_tuned_pg <- tune::tune_grid(
       object = adaLasso_wf_pg,
       resamples = inner_folds_SRE,
-      grid = expand.grid(list(mixture = 1, penalty = seq(0.001,5,length=100))), 
+      grid = expand.grid(list(mixture = 1, penalty = seq(0.001,0.1,length=100))), 
       metrics = metrics,
       control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
     )
@@ -718,6 +718,38 @@ for(dataset in datasets) {
     SRE_pg_preds$label <- SRE_test$label
     pg <- partialGini(SRE_pg_preds$.pred_X1, SRE_pg_preds$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
+    
+    #without parsnip
+    ridgetest <- cv.glmnet(label ~., data = SRE_train,
+              family = "binomial",
+              alpha = 0
+              )
+    coeftest <- coef(ridgetest)
+    finallasso <- cv.glmnet(label ~., data = SRE_train,
+                            family = "binomial",
+                            alpha = 1,
+                            penalty.factors = coeftest)
+    l1se_ind <- which(finallasso$lambda == finallasso$lambda.1se)
+    finallasso$nzero[l1se_ind]
+    coef(finallasso)
+    test_preds_SRE <- data.frame(predict(finallasso, SRE_test, s = "lambda.1se", type = "response"))
+    test_preds_SRE$label <- SRE_test$label
+    colnames(test_preds_SRE) <- c("X1", "label")
+    
+    #AUC
+    g <- roc(label ~ X1, data = test_preds_SRE, direction = "<")
+    AUC <- g$auc
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", AUC)
+    
+    #Brier
+    brier <- brier_class_vec(test_preds_SRE$label, test_preds_SRE$X1)
+    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", brier)
+    
+    #PG
+    
+    pg <- partialGini(test_preds_SRE$X1, test_preds_SRE$label)
+    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
+    
     
   }
   dataset_counter <- dataset_counter + 1
