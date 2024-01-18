@@ -23,7 +23,7 @@ outerfolds = 2
 innerfolds = 3
 dataset_vector = c("GC", "AC")#, "GMSC", "TH02")
 
-ctrl <- trainControl(method = "cv", number = innerfolds, classProbs = TRUE, summaryFunction = BigSummary, search = "grid")
+ctrl <- trainControl(method = "cv", number = innerfolds, classProbs = TRUE, summaryFunction = BigSummary, search = "grid", allowParallel = TRUE)
 metrics = metric_set(roc_auc, brier_class)
 
 # create empty dataframe metric_results with columns: (dataset, repeat, fold, algorithm, metric)	
@@ -509,7 +509,7 @@ for(dataset in datasets) {
     #####
     print("RE")
     set.seed(innerseed)
-    RE_model <- train(TREE_recipe, data = train, method = "pre",
+    RE_model <- train(RF_recipe, data = train_RF, method = "pre",
                       ntrees = 500, family = "binomial", trControl = ctrl,
                       tuneGrid = preGrid, ad.alpha = 0, singleconditions = TRUE,
                       winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
@@ -517,8 +517,8 @@ for(dataset in datasets) {
                       metric = "AUCROC")
     RE_learning_rate <- RE_model$bestTune$learnrate
     
-    RE_preds <- predict(RE_model, test, type = 'probs')
-    RE_preds$label <- test$label
+    RE_preds <- predict(RE_model, test_RF, type = 'probs')
+    RE_preds$label <- test_RF$label
     #AUC
     g <- roc(label ~ X1, data = RE_preds, direction = "<")
     AUC <- g$auc

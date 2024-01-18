@@ -29,8 +29,14 @@ partialGini <- function(preds, actuals, cutoff = 0.4) {
   subset_indices <- which(preds < cutoff)
   subset_preds <- preds[subset_indices]
   subset_actuals <- actuals[subset_indices]
+
   if(length(subset_preds)==0){
-    return(0)}
+    return(0)
+    print("warning: no case predictions")}
+  if(length(unique(subset_actuals))<2){
+    return(0.5)
+    print("warning: no cases")}
+  
   # Calculate ROC curve for the subset
   roc_subset <- pROC::roc(subset_actuals, subset_preds)
   
