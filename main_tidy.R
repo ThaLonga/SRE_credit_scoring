@@ -8,7 +8,7 @@ p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, ticto
 #levels should be X1 and X2
 #evaluation function for caret tuning from pre package
 source("./src/models.R")
-source("./src/partialGini_yardstick.R")
+#source("./src/partialGini_yardstick.R")
 source("./src/hyperparameters.R")
 source("./src/BigSummary.R")
 source("./src/data_loader.R")
@@ -46,7 +46,7 @@ for(dataset in datasets) {
   # for GMSC only 3 repeats because large dataset
   if(dataset_counter==3) {nr_repeats <- 3} else {nr_repeats <- 5}
   
-  set.seed(123)
+  set.seed(1234)
   # create 5x2 folds
   folds <- vfold_cv(dataset, v = outerfolds, repeats = nr_repeats, strata = NULL)
   for(i in 1:nrow(folds)) {
@@ -271,11 +271,11 @@ for(dataset in datasets) {
       # Find the three levels with the lowest frequency
       train_RF <- train
       test_RF <- test
-      lowest_levels <- names(sort(table(train$X4))[1:4])
+      lowest_levels_X4 <- names(sort(table(train$X4))[1:4])
       
       # Combine the three lowest levels into a new level, for example, "Other"
-      train_RF$X4 <- factor(ifelse(train_RF$X4 %in% lowest_levels, "Other", as.character(train_RF$X4)))
-      test_RF$X4 <- factor(ifelse(test_RF$X4 %in% lowest_levels, "Other", as.character(test_RF$X4)))
+      train_RF$X4 <- factor(ifelse(train_RF$X4 %in% lowest_levels_X4, "Other", as.character(train_RF$X4)))
+      test_RF$X4 <- factor(ifelse(test_RF$X4 %in% lowest_levels_X4, "Other", as.character(test_RF$X4)))
       RF_recipe <- train_RF %>% recipe(label~.) %>% 
         step_impute_mean(all_numeric_predictors()) %>%
         step_impute_mode(all_string_predictors()) %>%
@@ -394,6 +394,7 @@ for(dataset in datasets) {
     xgb_wf <- workflow() %>%
       add_recipe(TREE_recipe) %>%
       add_model(xgb_model)
+    print(hyperparameters_XGB_tidy)
     
     
     xgb_tuned <- tune::tune_grid(
@@ -459,7 +460,7 @@ for(dataset in datasets) {
     lgbm_wf <- workflow() %>%
       add_recipe(TREE_recipe) %>%
       add_model(lgbm_model)
-  
+    
     lgbm_tuned <- tune::tune_grid(
       object = lgbm_wf,
       resamples = inner_folds, #same folds as xgboost
@@ -508,8 +509,38 @@ for(dataset in datasets) {
     # RE
     #####
     print("RE")
+    
+    if(dataset_counter==1) {
+      # Find the three levels with the lowest frequency
+      train_RE <- train
+      test_RE <- test
+      lowest_levels_X4 <- names(sort(table(train$X4))[1:4])
+      lowest_levels_X17 <- names(sort(table(train$X17))[1:2])
+      
+      # Combine the three lowest levels into a new level, for example, "Other"
+      train_RE$X4 <- factor(ifelse(train_RE$X4 %in% lowest_levels_X4, "Other", as.character(train_RE$X4)))
+      test_RE$X4 <- factor(ifelse(test_RE$X4 %in% lowest_levels_X4, "Other", as.character(test_RE$X4)))
+      train_RE$X17 <- factor(ifelse(train_RE$X17 %in% lowest_levels_X17, "Other", as.character(train_RE$X17)))
+      test_RE$X17 <- factor(ifelse(test_RE$X17 %in% lowest_levels_X17, "Other", as.character(test_RE$X17)))
+      RE_recipe <- train_RE %>% recipe(label~.) %>% 
+        step_impute_mean(all_numeric_predictors()) %>%
+        step_impute_mode(all_string_predictors()) %>%
+        step_impute_mode(all_factor_predictors()) %>%
+        step_zv(all_predictors()) %>%
+        step_dummy(all_string_predictors()) %>%
+        step_dummy(all_factor_predictors()) %>%
+        step_zv(all_predictors())
+      train_RE_baked <- RE_recipe %>%
+        prep() %>%
+        bake(train_RE)
+      test_RE_baked <- RE_recipe %>%
+        prep() %>%
+        bake(test_RE)
+    }
+    
+    
     set.seed(innerseed)
-    RE_model <- train(RF_recipe, data = train_RF, method = "pre",
+    RE_model <- train(TREE_recipe, data = train_RE, method = "pre",
                       ntrees = 500, family = "binomial", trControl = ctrl,
                       tuneGrid = preGrid, ad.alpha = 0, singleconditions = TRUE,
                       winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
@@ -517,8 +548,8 @@ for(dataset in datasets) {
                       metric = "AUCROC")
     RE_learning_rate <- RE_model$bestTune$learnrate
     
-    RE_preds <- predict(RE_model, test_RF, type = 'probs')
-    RE_preds$label <- test_RF$label
+    RE_preds <- predict(RE_model, test_RE, type = 'probs')
+    RE_preds$label <- test_RE$label
     #AUC
     g <- roc(label ~ X1, data = RE_preds, direction = "<")
     AUC <- g$auc
@@ -542,11 +573,14 @@ for(dataset in datasets) {
       # Find the three levels with the lowest frequency
       train_HRE <- train
       test_HRE <- test
-      lowest_levels <- names(sort(table(train$X4))[1:4])
+      lowest_levels_X4 <- names(sort(table(train$X4))[1:4])
+      lowest_levels_X17 <- names(sort(table(train$X17))[1:2])
       
       # Combine the three lowest levels into a new level, for example, "Other"
-      train_HRE$X4 <- factor(ifelse(train_HRE$X4 %in% lowest_levels, "Other", as.character(train_HRE$X4)))
-      test_HRE$X4 <- factor(ifelse(test_HRE$X4 %in% lowest_levels, "Other", as.character(test_HRE$X4)))
+      train_HRE$X4 <- factor(ifelse(train_HRE$X4 %in% lowest_levels_X4, "Other", as.character(train_HRE$X4)))
+      test_HRE$X4 <- factor(ifelse(test_HRE$X4 %in% lowest_levels_X4, "Other", as.character(test_HRE$X4)))
+      train_HRE$X17 <- factor(ifelse(train_HRE$X17 %in% lowest_levels_X17, "Other", as.character(train_HRE$X17)))
+      test_HRE$X17 <- factor(ifelse(test_HRE$X17 %in% lowest_levels_X17, "Other", as.character(test_HRE$X17)))
       HRE_recipe <- train_HRE %>% recipe(label~.) %>% 
         step_impute_mean(all_numeric_predictors()) %>%
         step_impute_mode(all_string_predictors()) %>%
@@ -555,23 +589,23 @@ for(dataset in datasets) {
         step_dummy(all_string_predictors()) %>%
         step_dummy(all_factor_predictors()) %>%
         step_zv(all_predictors())
-      train_HRE <- HRE_recipe %>%
+      train_HRE_baked <- HRE_recipe %>%
         prep() %>%
         bake(train_HRE)
-      test_HRE <- HRE_recipe %>%
+      test_HRE_baked <- HRE_recipe %>%
         prep() %>%
         bake(test_HRE)
     }
     
     set.seed(innerseed)
-    HRE_model <- gpe(label ~., data = (train_HRE),
+    HRE_model <- gpe(label ~., data = train_HRE_baked,
                      base_learners = list(gpe_trees(learnrate = RE_model$bestTune$learnrate, ntrees = 500),#learn rate based on AUC
                                           gpe_earth(degree = 3, nk = 50),
                                           gpe_linear()),
                      penalized_trainer = gpe_cv.glmnet(family = "binomial", ad.alpha = 0, weights = NULL))
     
-    HRE_preds <- data.frame(predict(HRE_model, test_HRE, type = 'response'))
-    HRE_preds$label <- test$label
+    HRE_preds <- data.frame(predict(HRE_model, test_HRE_baked, type = 'response'))
+    HRE_preds$label <- test_HRE_baked$label
     #AUC
     g <- roc(label ~ lambda.1se, data = HRE_preds, direction = "<")
     AUC <- g$auc
@@ -604,8 +638,8 @@ for(dataset in datasets) {
     }
     
     #save rules for SRE
-    train_rule_baked <- TREE_recipe %>% prep() %>% bake(train)
-    test_rule_baked <- TREE_recipe %>% prep() %>% bake(test)
+    train_rule_baked <- train_HRE_baked
+    test_rule_baked <- test_HRE_baked
     
     SRE_train_rules <- fit_rules(train_rule_baked, RE_model$finalModel$rules$description)
     SRE_test_rules <- fit_rules(test_rule_baked, RE_model$finalModel$rules$description)

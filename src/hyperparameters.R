@@ -46,7 +46,7 @@ hyperparameters_XGB <- list(
   subsample = 1 #default
 )
 
-hyperparameters_XGB_tidy <- expand.grid(list(
+hyperparameters_XGB_tidy <- crossing(
   trees = c(10,50,100,250,500,1000), #L
   learn_rate = c(0.001, 0.01, 0.1, 0.2, 0.5), #B
   loss_reduction = c(0.5, 1, 1.5, 2), #B
@@ -54,7 +54,7 @@ hyperparameters_XGB_tidy <- expand.grid(list(
   #colsample_bytree = 1, #default
   #min_child_weight = 1, #default
   #subsample = 1 #default
-))
+)
 
 
 
