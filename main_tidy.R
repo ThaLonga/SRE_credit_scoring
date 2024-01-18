@@ -1,6 +1,6 @@
 # main
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
-p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, doParallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai, rlang, yardstick, bonsai, lightgbm, ranger, tune)
+p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, doParallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai, rlang, yardstick, bonsai, lightgbm, ranger, tune, DescTools)
 #conventions:
 # target variable = label
 # indepentent variables = all others
@@ -122,7 +122,7 @@ for(dataset in datasets) {
     final_LRR_wf_brier <- LRR_wf %>% finalize_workflow(best_model_brier)
     final_LRR_fit_brier <- final_LRR_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
     
-    best_model_pg <- LRR_tuned %>% select_best_pg()
+    best_model_pg <- LRR_tuned %>% select_best_pg_LRR()
     final_LRR_wf_pg <- LRR_wf %>% finalize_workflow(best_model_pg)
     final_LRR_fit_pg <- final_LRR_wf_pg %>% last_fit(folds$splits[[i]], metrics = metrics)
     
@@ -166,7 +166,6 @@ for(dataset in datasets) {
     
     GAM_model <- gam(formula, family = "binomial", data = train_bake)
     GAM_preds <- data.frame(X1 = as.vector(predict(GAM_model, test_bake, type = 'response')))
-    print("pred ok")
     GAM_preds$label <- test_bake$label
     #AUC
     g <- roc(label ~ X1, data = GAM_preds, direction = "<")
@@ -247,7 +246,6 @@ for(dataset in datasets) {
     g <- roc(label ~ X1, data = CTREE_preds, direction = "<")
     AUC <- g$auc
     AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "CTREE", AUC)
-    print(AUC)
     #Brier
     brier <- brier_class_vec(CTREE_preds$label, CTREE_preds$X1)
     Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "CTREE", brier)
@@ -268,44 +266,68 @@ for(dataset in datasets) {
     #reload hyperparameters because it uses ncol(train_bake_x)
     source("./src/hyperparameters.R")
     
+    
+    if(dataset_counter==1) {
+      # Find the three levels with the lowest frequency
+      train_RF <- train
+      test_RF <- test
+      lowest_levels <- names(sort(table(train$X4))[1:4])
+      
+      # Combine the three lowest levels into a new level, for example, "Other"
+      train_RF$X4 <- factor(ifelse(train_RF$X4 %in% lowest_levels, "Other", as.character(train_RF$X4)))
+      test_RF$X4 <- factor(ifelse(test_RF$X4 %in% lowest_levels, "Other", as.character(test_RF$X4)))
+      RF_recipe <- train_RF %>% recipe(label~.) %>% 
+        step_impute_mean(all_numeric_predictors()) %>%
+        step_impute_mode(all_string_predictors()) %>%
+        step_impute_mode(all_factor_predictors()) %>%
+        step_zv(all_predictors())
+      train_RF <- RF_recipe %>%
+        prep() %>%
+        bake(train_RF)
+      test_RF <- RF_recipe %>%
+        prep() %>%
+        bake(test_RF)
+    }
+    
     modellist <- list()
     for (ntree in c(100,250,500,750,1000)){
       set.seed(innerseed)
       print(ntree)
-      RF_model <- train(MINIMAL_recipe, data = train, method = "ranger", trControl = ctrl,
+      
+      
+      RF_model <- train(RF_recipe, data = train_RF, method = "ranger", trControl = ctrl,
                         tuneGrid = expand.grid(mtry = hyperparameters_RF$mtry,
                                                splitrule = hyperparameters_RF$splitrule,
                                                min.node.size = hyperparameters_RF$min.node.size),
                         num.tree = ntree, 
                         metric = "AUCROC")
       key <- toString(ntree)
-      print(ntree)
       modellist[[key]] <- RF_model
     }
     
     
     #AUC
     RF_model_AUC <- extractBestModel(modellist, "AUCROC")
-    RF_preds_AUC <- data.frame(predict(RF_model_AUC, test, type = 'prob'))
+    RF_preds_AUC <- data.frame(predict(RF_model_AUC, test_RF, type = 'prob'))
     names(RF_preds_AUC) <- c("X0", "X1")
-    RF_preds_AUC$label <- test$label
+    RF_preds_AUC$label <- test_RF$label
     g <- roc(label ~ X1, data = RF_preds_AUC, direction = "<")
     AUC <- g$auc
     AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", AUC)
     
     #PG
     RF_model_PG <- extractBestModel(modellist, "partialGini")
-    RF_preds_PG <- data.frame(predict(RF_model_PG, test, type = 'probs'))
+    RF_preds_PG <- data.frame(predict(RF_model_PG, test_RF, type = 'probs'))
     names(RF_preds_PG) <- c("X0", "X1")
-    RF_preds_PG$label <- test$label
+    RF_preds_PG$label <- test_RF$label
     pg <- partialGini(RF_preds_PG$X1, RF_preds_PG$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", pg)
     
     #Brier
     RF_model_Brier <- extractBestModel(modellist, "Brier")
-    RF_preds_Brier <- data.frame(predict(RF_model_Brier, test, type = 'prob'))
+    RF_preds_Brier <- data.frame(predict(RF_model_Brier, test_RF, type = 'prob'))
     names(RF_preds_Brier) <- c("X0", "X1")
-    RF_preds_Brier$label <- test$label
+    RF_preds_Brier$label <- test_RF$label
     bs <- mean(((as.numeric(RF_preds_Brier$label)-1) - RF_preds_Brier$X1)^2)
     Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", bs)
     
@@ -379,7 +401,7 @@ for(dataset in datasets) {
       resamples = inner_folds,
       grid = hyperparameters_XGB_tidy,
       metrics = metrics,
-      control = tune::control_grid(verbose = TRUE)
+      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
     )
 
     
@@ -391,7 +413,7 @@ for(dataset in datasets) {
     final_xgb_wf_brier <- xgb_wf %>% finalize_workflow(best_booster_brier)
     final_xgb_fit_brier <- final_xgb_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
 
-    best_model_pg <- xgb_tuned %>% select_best_pg()
+    best_model_pg <- xgb_tuned %>% select_best_pg_XGB()
     final_xgb_wf_pg <- xgb_wf %>% finalize_workflow(best_model_pg)
     final_xgb_fit_pg <- final_xgb_wf_pg %>% last_fit(folds$splits[[i]], metrics = metrics)
     
@@ -443,7 +465,7 @@ for(dataset in datasets) {
       resamples = inner_folds, #same folds as xgboost
       grid = hyperparameters_XGB_tidy, #same setting as xgboost
       metrics = metrics,
-      control = tune::control_grid(verbose = TRUE)
+      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
     )
     
     lgbm_tuned %>%
@@ -458,7 +480,7 @@ for(dataset in datasets) {
     final_lgbm_wf_brier <- lgbm_wf %>% finalize_workflow(best_booster_brier)
     final_lgbm_fit_brier <- final_lgbm_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
     
-    best_model_pg <- lgbm_tuned %>% select_best_pg()
+    best_model_pg <- lgbm_tuned %>% select_best_pg_XGB()
     final_lgbm_wf_pg <- lgbm_wf %>% finalize_workflow(best_model_pg)
     final_lgbm_fit_pg <- final_lgbm_wf_pg %>% last_fit(folds$splits[[i]], metrics = metrics)
     
@@ -501,7 +523,6 @@ for(dataset in datasets) {
     g <- roc(label ~ X1, data = RE_preds, direction = "<")
     AUC <- g$auc
     AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", AUC)
-    print(AUC)
     #Brier
     brier <- brier_class_vec(RE_preds$label, RE_preds$X1)
     Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", brier)
@@ -555,7 +576,6 @@ for(dataset in datasets) {
     g <- roc(label ~ lambda.1se, data = HRE_preds, direction = "<")
     AUC <- g$auc
     AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "HRE", AUC)
-    print(AUC)
     #Brier
     brier <- brier_class_vec(HRE_preds$label, HRE_preds$lambda.1se)
     Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "HRE", brier)
@@ -767,13 +787,15 @@ for(dataset in datasets) {
     pg <- partialGini(test_preds_SRE$X1, test_preds_SRE$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
   }
+  write.csv(metric_results, file = "./results/dataset.csv")
+  
   dataset_counter <- dataset_counter + 1
 }
 
 
 
 
-#write.csv(metric_results, file = "./results/AUCROC_results.csv")
+write.csv(metric_results, file = "./results/AUCROC_results.csv")
 
 stopCluster(cl)
 
