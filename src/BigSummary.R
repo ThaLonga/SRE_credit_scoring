@@ -7,14 +7,11 @@ BigSummary <- function (data, lev = NULL, model = NULL) {
   #PG
   probs <- try(data[,"X1"], silent = TRUE)
   actuals <- data$obs
-  sorted_indices <- order(probs, decreasing = TRUE)
-  sorted_probs <- probs[sorted_indices]
-  sorted_actuals <- actuals[sorted_indices]
 
   # Select subset with PD < 0.4
-  subset_indices <- which(sorted_probs < 0.4)
-  subset_probs <- sorted_probs[subset_indices]
-  subset_actuals <- sorted_actuals[subset_indices]
+  subset_indices <- which(probs < 0.4)
+  subset_probs <- probs[subset_indices]
+  subset_actuals <- actuals[subset_indices]
 
   # Check if there are both positive and negative cases in the subset
   if (length(unique(subset_actuals)) > 1) {

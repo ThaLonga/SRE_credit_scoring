@@ -24,12 +24,13 @@ get_splineworthy_columns <- function(X) {
 
 #PG: cutoff = max probability of default
 partialGini <- function(preds, actuals, cutoff = 0.4) {
-  
+
   # Select subset with PD < 0.4
   subset_indices <- which(preds < cutoff)
   subset_preds <- preds[subset_indices]
   subset_actuals <- actuals[subset_indices]
-  
+  if(length(subset_preds)==0){
+    return(0)}
   # Calculate ROC curve for the subset
   roc_subset <- pROC::roc(subset_actuals, subset_preds)
   
@@ -78,7 +79,7 @@ extractBestModel <- function(modellist, metric = "AUCROC") {
   return(best_model)
 }
 
-select_best_pg <- function(.data) {
+select_best_pg_LRR <- function(.data) {
   suppressMessages({.data %>%
       collect_predictions(summarize = TRUE) %>%
       group_by(penalty, mixture, .config) %>%
@@ -87,6 +88,17 @@ select_best_pg <- function(.data) {
       slice_max(partial_gini) %>%
       select(penalty, mixture, .config)})
 }
+
+select_best_pg_XGB <- function(.data) {
+  suppressMessages({.data %>%
+      collect_predictions(summarize = TRUE) %>%
+      group_by(trees, tree_depth, learn_rate, loss_reduction, .config) %>%
+      summarise(partial_gini = partialGini(.pred_X1, label)) %>%
+      ungroup() %>%
+      slice_max(partial_gini) %>%
+      select(trees, tree_depth, learn_rate, loss_reduction, .config)})
+}
+
 
 collect_pg <- function(.data) {
   suppressMessages({.data %>%
