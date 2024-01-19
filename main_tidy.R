@@ -46,7 +46,7 @@ for(dataset in datasets) {
   # for GMSC only 3 repeats because large dataset
   if(dataset_counter==3) {nr_repeats <- 3} else {nr_repeats <- 5}
   
-  set.seed(1234)
+  set.seed(123)
   # create 5x2 folds
   folds <- vfold_cv(dataset, v = outerfolds, repeats = nr_repeats, strata = NULL)
   for(i in 1:nrow(folds)) {
@@ -596,11 +596,11 @@ for(dataset in datasets) {
         prep() %>%
         bake(test_HRE)
     }
-    
+      
     set.seed(innerseed)
     HRE_model <- gpe(label ~., data = train_HRE_baked,
                      base_learners = list(gpe_trees(learnrate = RE_model$bestTune$learnrate, ntrees = 500),#learn rate based on AUC
-                                          gpe_earth(degree = 3, nk = 50),
+                                          gpe_earth(degree = 3, nk = 2*sum(get_splineworthy_columns(train_HRE_baked))),
                                           gpe_linear()),
                      penalized_trainer = gpe_cv.glmnet(family = "binomial", ad.alpha = 0, weights = NULL))
     

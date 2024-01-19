@@ -92,6 +92,7 @@ select_best_pg_LRR <- function(.data) {
       summarise(partial_gini = partialGini(.pred_X1, label)) %>%
       ungroup() %>%
       slice_max(partial_gini) %>%
+      filter(row_number()==1) %>%
       select(penalty, mixture, .config)})
 }
 
@@ -102,6 +103,7 @@ select_best_pg_XGB <- function(.data) {
       summarise(partial_gini = partialGini(.pred_X1, label)) %>%
       ungroup() %>%
       slice_max(partial_gini) %>%
+      filter(row_number()==1) %>%
       select(trees, tree_depth, learn_rate, loss_reduction, .config)})
 }
 
