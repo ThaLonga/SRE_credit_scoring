@@ -21,7 +21,7 @@ metric = "AUCROC"
 nr_repeats = 3
 outerfolds = 2
 innerfolds = 3
-dataset_vector = c("GC", "AC")#, "GMSC", "TH02")
+dataset_vector = c("GC", "AC", "GMSC", "TH02")
 
 ctrl <- trainControl(method = "cv", number = innerfolds, classProbs = TRUE, summaryFunction = BigSummary, search = "grid", allowParallel = TRUE)
 metrics = metric_set(roc_auc, brier_class)
@@ -38,7 +38,7 @@ AUC_results <- metric_results
 Brier_results <- metric_results
 PG_results <- metric_results
 
-dataset_counter = 1
+dataset_counter = 3
 
 for(dataset in datasets) {
   
@@ -236,7 +236,7 @@ for(dataset in datasets) {
     #####
     print("CTREE")    
     set.seed(innerseed)
-    CTREE_model <- train(label ~., data = train, method = "ctree", trControl = ctrl,
+    CTREE_model <- train(TREE_recipe, data = train, method = "ctree", trControl = ctrl,
           tuneGrid = expand.grid(mincriterion = hyperparameters_CTREE$mincriterion),
           metric = "AUCROC")
 
@@ -266,28 +266,30 @@ for(dataset in datasets) {
     #reload hyperparameters because it uses ncol(train_bake_x)
     source("./src/hyperparameters.R")
     
+    train_RF <- train
+    test_RF <- test
     
     if(dataset_counter==1) {
       # Find the three levels with the lowest frequency
-      train_RF <- train
-      test_RF <- test
+
       lowest_levels_X4 <- names(sort(table(train$X4))[1:4])
       
       # Combine the three lowest levels into a new level, for example, "Other"
       train_RF$X4 <- factor(ifelse(train_RF$X4 %in% lowest_levels_X4, "Other", as.character(train_RF$X4)))
       test_RF$X4 <- factor(ifelse(test_RF$X4 %in% lowest_levels_X4, "Other", as.character(test_RF$X4)))
+    }
       RF_recipe <- train_RF %>% recipe(label~.) %>% 
         step_impute_mean(all_numeric_predictors()) %>%
         step_impute_mode(all_string_predictors()) %>%
         step_impute_mode(all_factor_predictors()) %>%
         step_zv(all_predictors())
-      train_RF <- RF_recipe %>%
+      train_RF_bake <- RF_recipe %>%
         prep() %>%
         bake(train_RF)
-      test_RF <- RF_recipe %>%
+      test_RF_bake <- RF_recipe %>%
         prep() %>%
         bake(test_RF)
-    }
+    
     
     modellist <- list()
     for (ntree in c(100,250,500,750,1000)){
@@ -509,11 +511,12 @@ for(dataset in datasets) {
     # RE
     #####
     print("RE")
+    train_RE <- train
+    test_RE <- test
     
     if(dataset_counter==1) {
       # Find the three levels with the lowest frequency
-      train_RE <- train
-      test_RE <- test
+
       lowest_levels_X4 <- names(sort(table(train$X4))[1:4])
       lowest_levels_X17 <- names(sort(table(train$X17))[1:2])
       
@@ -522,6 +525,7 @@ for(dataset in datasets) {
       test_RE$X4 <- factor(ifelse(test_RE$X4 %in% lowest_levels_X4, "Other", as.character(test_RE$X4)))
       train_RE$X17 <- factor(ifelse(train_RE$X17 %in% lowest_levels_X17, "Other", as.character(train_RE$X17)))
       test_RE$X17 <- factor(ifelse(test_RE$X17 %in% lowest_levels_X17, "Other", as.character(test_RE$X17)))
+    }
       RE_recipe <- train_RE %>% recipe(label~.) %>% 
         step_impute_mean(all_numeric_predictors()) %>%
         step_impute_mode(all_string_predictors()) %>%
@@ -536,11 +540,11 @@ for(dataset in datasets) {
       test_RE_baked <- RE_recipe %>%
         prep() %>%
         bake(test_RE)
-    }
+    
     
     
     set.seed(innerseed)
-    RE_model <- train(TREE_recipe, data = train_RE, method = "pre",
+    RE_model <- train(RE_recipe, data = train_RE, method = "pre",
                       ntrees = 500, family = "binomial", trControl = ctrl,
                       tuneGrid = preGrid, ad.alpha = 0, singleconditions = TRUE,
                       winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
@@ -629,12 +633,12 @@ for(dataset in datasets) {
     fitted_smooths_test <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(test_bake)))
     colnames(fitted_smooths_train) <- smooth_terms
     colnames(fitted_smooths_test) <- smooth_terms
-    for (i in seq_along(smooth_terms)) {
-      current_smooth <- smooth_terms[i]
+    for (j in seq_along(smooth_terms)) {
+      current_smooth <- smooth_terms[j]
       fitted_values_train <- predict(GAM_model, type = "terms")[, current_smooth]
-      fitted_smooths_train[, i] <- fitted_values_train
+      fitted_smooths_train[, j] <- fitted_values_train
       fitted_values_test <- predict(GAM_model, test_bake, type = "terms")[, current_smooth]
-      fitted_smooths_test[, i] <- fitted_values_test 
+      fitted_smooths_test[, j] <- fitted_values_test 
     }
     
     train_rule_baked <- train_RE_baked
@@ -820,7 +824,10 @@ for(dataset in datasets) {
     pg <- partialGini(test_preds_SRE$X1, test_preds_SRE$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
   }
-  write.csv(metric_results, file = "./results/dataset.csv")
+  write.csv(AUC_results, file = paste("./results/",dataset_vector[3],"_AUC.csv", sep = ""))
+  write.csv(Brier_results, file = paste("./results/",dataset_vector[3],"_BRIER.csv", sep = ""))
+  PG_results$metric<-unlist(PG_results$metric)
+  write.csv(PG_results, file = paste("./results/",dataset_vector[3],"_PG.csv", sep = ""))
   
   dataset_counter <- dataset_counter + 1
 }
@@ -828,7 +835,7 @@ for(dataset in datasets) {
 
 
 
-write.csv(metric_results, file = "./results/AUCROC_results.csv")
+#write.csv(metric_results, file = "./results/AUCROC_results.csv")
 
 stopCluster(cl)
 
