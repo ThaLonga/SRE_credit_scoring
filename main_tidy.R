@@ -46,7 +46,7 @@ for(dataset in datasets) {
   # for GMSC only 3 repeats because large dataset
   if(dataset_counter==3) {nr_repeats <- 3} else {nr_repeats <- 5}
   
-  set.seed(123)
+  set.seed(111)
   # create 5x2 folds
   folds <- vfold_cv(dataset, v = outerfolds, repeats = nr_repeats, strata = NULL)
   for(i in 1:nrow(folds)) {
@@ -365,19 +365,19 @@ for(dataset in datasets) {
 #    AUC <- g$auc
 #    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", AUC)
 #    print(AUC)
-    
+#   
 #    #PG
 #    pg <- partialGini(XGB_preds$X1, XGB_preds$label, 0.4)
 #    pg
-    
+#   
 #    #Brier
 #    bs <- mean(((as.numeric(XGB_preds$label)-1) - XGB_preds$X1)^2)
 #    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", bs)
 #    bs
-    
+#   
+  
    
-    
-    
+   
     #tidymodels
     # WERKT NOG NIET MET PG
     
@@ -566,58 +566,58 @@ for(dataset in datasets) {
     #####
     # HRE
     #####
-    print("HRE")
-    set.seed(innerseed)
-    
-    if(dataset_counter==1) {
-      # Find the three levels with the lowest frequency
-      train_HRE <- train
-      test_HRE <- test
-      lowest_levels_X4 <- names(sort(table(train$X4))[1:4])
-      lowest_levels_X17 <- names(sort(table(train$X17))[1:2])
-      
-      # Combine the three lowest levels into a new level, for example, "Other"
-      train_HRE$X4 <- factor(ifelse(train_HRE$X4 %in% lowest_levels_X4, "Other", as.character(train_HRE$X4)))
-      test_HRE$X4 <- factor(ifelse(test_HRE$X4 %in% lowest_levels_X4, "Other", as.character(test_HRE$X4)))
-      train_HRE$X17 <- factor(ifelse(train_HRE$X17 %in% lowest_levels_X17, "Other", as.character(train_HRE$X17)))
-      test_HRE$X17 <- factor(ifelse(test_HRE$X17 %in% lowest_levels_X17, "Other", as.character(test_HRE$X17)))
-      HRE_recipe <- train_HRE %>% recipe(label~.) %>% 
-        step_impute_mean(all_numeric_predictors()) %>%
-        step_impute_mode(all_string_predictors()) %>%
-        step_impute_mode(all_factor_predictors()) %>%
-        step_zv(all_predictors()) %>%
-        step_dummy(all_string_predictors()) %>%
-        step_dummy(all_factor_predictors()) %>%
-        step_zv(all_predictors())
-      train_HRE_baked <- HRE_recipe %>%
-        prep() %>%
-        bake(train_HRE)
-      test_HRE_baked <- HRE_recipe %>%
-        prep() %>%
-        bake(test_HRE)
-    }
-      
-    set.seed(innerseed)
-    HRE_model <- gpe(label ~., data = train_HRE_baked,
-                     base_learners = list(gpe_trees(learnrate = RE_model$bestTune$learnrate, ntrees = 500),#learn rate based on AUC
-                                          gpe_earth(degree = 3, nk = 2*sum(get_splineworthy_columns(train_HRE_baked))),
-                                          gpe_linear()),
-                     penalized_trainer = gpe_cv.glmnet(family = "binomial", ad.alpha = 0, weights = NULL))
-    
-    HRE_preds <- data.frame(predict(HRE_model, test_HRE_baked, type = 'response'))
-    HRE_preds$label <- test_HRE_baked$label
-    #AUC
-    g <- roc(label ~ lambda.1se, data = HRE_preds, direction = "<")
-    AUC <- g$auc
-    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "HRE", AUC)
-    #Brier
-    brier <- brier_class_vec(HRE_preds$label, HRE_preds$lambda.1se)
-    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "HRE", brier)
-    
-    #PG
-    pg <- partialGini(HRE_preds$X1, HRE_preds$label)
-    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "HRE", pg)
-    
+    #print("HRE")
+    #set.seed(innerseed)
+    #
+    #if(dataset_counter==1) {
+    #  # Find the three levels with the lowest frequency
+    #  train_HRE <- train
+    #  test_HRE <- test
+    #  lowest_levels_X4 <- names(sort(table(train$X4))[1:4])
+    #  lowest_levels_X17 <- names(sort(table(train$X17))[1:2])
+    #  
+    #  # Combine the three lowest levels into a new level, for example, "Other"
+    #  train_HRE$X4 <- factor(ifelse(train_HRE$X4 %in% lowest_levels_X4, "Other", as.character(train_HRE$X4)))
+    #  test_HRE$X4 <- factor(ifelse(test_HRE$X4 %in% lowest_levels_X4, "Other", as.character(test_HRE$X4)))
+    #  train_HRE$X17 <- factor(ifelse(train_HRE$X17 %in% lowest_levels_X17, "Other", as.character(train_HRE$X17)))
+    #  test_HRE$X17 <- factor(ifelse(test_HRE$X17 %in% lowest_levels_X17, "Other", as.character(test_HRE$X17)))
+    #  HRE_recipe <- train_HRE %>% recipe(label~.) %>% 
+    #    step_impute_mean(all_numeric_predictors()) %>%
+    #    step_impute_mode(all_string_predictors()) %>%
+    #    step_impute_mode(all_factor_predictors()) %>%
+    #    step_zv(all_predictors()) %>%
+    #    step_dummy(all_string_predictors()) %>%
+    #    step_dummy(all_factor_predictors()) %>%
+    #    step_zv(all_predictors())
+    #  train_HRE_baked <- HRE_recipe %>%
+    #    prep() %>%
+    #    bake(train_HRE)
+    #  test_HRE_baked <- HRE_recipe %>%
+    #    prep() %>%
+    #    bake(test_HRE)
+    #}
+    #  
+    #set.seed(innerseed)
+    #HRE_model <- gpe(label ~., data = train_HRE_baked,
+    #                 base_learners = list(gpe_trees(learnrate = RE_model$bestTune$learnrate, ntrees = 500),#learn rate based on AUC
+    #                                      gpe_earth(degree = 3, nk = 2*sum(get_splineworthy_columns(train_HRE_baked))),
+    #                                      gpe_linear()),
+    #                 penalized_trainer = gpe_cv.glmnet(family = "binomial", ad.alpha = 0, weights = NULL))
+    #
+    #HRE_preds <- data.frame(predict(HRE_model, test_HRE_baked, type = 'response'))
+    #HRE_preds$label <- test_HRE_baked$label
+    ##AUC
+    #g <- roc(label ~ lambda.1se, data = HRE_preds, direction = "<")
+    #AUC <- g$auc
+    #AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "HRE", AUC)
+    ##Brier
+    #brier <- brier_class_vec(HRE_preds$label, HRE_preds$lambda.1se)
+    #Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "HRE", brier)
+    #
+    ##PG
+    #pg <- partialGini(HRE_preds$X1, HRE_preds$label)
+    #PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "HRE", pg)
+    #
     #####
     # SRE
     #####
@@ -637,9 +637,8 @@ for(dataset in datasets) {
       fitted_smooths_test[, i] <- fitted_values_test 
     }
     
-    #save rules for SRE
-    train_rule_baked <- train_HRE_baked
-    test_rule_baked <- test_HRE_baked
+    train_rule_baked <- train_RE_baked
+    test_rule_baked <- test_RE_baked
     
     SRE_train_rules <- fit_rules(train_rule_baked, RE_model$finalModel$rules$description)
     SRE_test_rules <- fit_rules(test_rule_baked, RE_model$finalModel$rules$description)
