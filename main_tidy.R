@@ -38,7 +38,7 @@ AUC_results <- metric_results
 Brier_results <- metric_results
 PG_results <- metric_results
 
-dataset_counter = 4
+dataset_counter = 1
 
 for(dataset in datasets) {
   
@@ -285,35 +285,34 @@ for(dataset in datasets) {
     train_RF <- train
     test_RF <- test
     
-    if(dataset_counter==1) {
-      # Find the three levels with the lowest frequency
-
-      lowest_levels_X4 <- names(sort(table(train$X4))[1:4])
-      
-      # Combine the three lowest levels into a new level, for example, "Other"
-      train_RF$X4 <- factor(ifelse(train_RF$X4 %in% lowest_levels_X4, "Other", as.character(train_RF$X4)))
-      test_RF$X4 <- factor(ifelse(test_RF$X4 %in% lowest_levels_X4, "Other", as.character(test_RF$X4)))
-    }
-      RF_recipe <- train_RF %>% recipe(label~.) %>% 
-        step_impute_mean(all_numeric_predictors()) %>%
-        step_impute_mode(all_string_predictors()) %>%
-        step_impute_mode(all_factor_predictors()) %>%
-        step_zv(all_predictors())
-      train_RF_bake <- RF_recipe %>%
-        prep() %>%
-        bake(train_RF)
-      test_RF_bake <- RF_recipe %>%
-        prep() %>%
-        bake(test_RF)
-    
+#    if(dataset_counter==1) {
+#      # Find the three levels with the lowest frequency
+#
+#      lowest_levels_X4 <- names(sort(table(train$X4))[1:4])
+#      
+#      # Combine the three lowest levels into a new level, for example, "Other"
+#      train_RF$X4 <- factor(ifelse(train_RF$X4 %in% lowest_levels_X4, "Other", as.character(train_RF$X4)))
+#      test_RF$X4 <- factor(ifelse(test_RF$X4 %in% lowest_levels_X4, "Other", as.character(test_RF$X4)))
+#    }
+#      RF_recipe <- train_RF %>% recipe(label~.) %>% 
+#        step_impute_mean(all_numeric_predictors()) %>%
+#        step_impute_mode(all_string_predictors()) %>%
+#        step_impute_mode(all_factor_predictors()) %>%
+#        step_zv(all_predictors())
+#      train_RF_bake <- RF_recipe %>%
+#        prep() %>%
+#        bake(train_RF)
+#      test_RF_bake <- RF_recipe %>%
+#        prep() %>%
+#        bake(test_RF)
+#    
     
     modellist <- list()
     for (ntree in c(100,250,500,750,1000)){
       set.seed(innerseed)
       print(ntree)
       
-      
-      RF_model <- train(RF_recipe, data = train_RF, method = "ranger", trControl = ctrl,
+      RF_model <- train(TREE_recipe, data = train_RF, method = "ranger", trControl = ctrl,
                         tuneGrid = expand.grid(mtry = hyperparameters_RF$mtry,
                                                splitrule = hyperparameters_RF$splitrule,
                                                min.node.size = hyperparameters_RF$min.node.size),
@@ -335,7 +334,7 @@ for(dataset in datasets) {
     
     #PG
     RF_model_PG <- extractBestModel(modellist, "partialGini")
-    RF_preds_PG <- data.frame(predict(RF_model_PG, test_RF, type = 'probs'))
+    RF_preds_PG <- data.frame(predict(RF_model_PG, test_RF, type = 'prob'))
     names(RF_preds_PG) <- c("X0", "X1")
     RF_preds_PG$label <- test_RF$label
     pg <- partialGini(RF_preds_PG$X1, RF_preds_PG$label)
@@ -452,13 +451,6 @@ for(dataset in datasets) {
     pg <- final_xgb_fit_pg %>%
       collect_pg()
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", pg)
-    
-    
-
-#    final_xgb_fit %>%
-#      collect_predictions() %>% 
-#      roc_curve(label, .pred_X0) %>% 
-#      autoplot()
 
     #####
     # LightGBM
@@ -481,7 +473,7 @@ for(dataset in datasets) {
     
     lgbm_tuned <- tune::tune_grid(
       object = lgbm_wf,
-      resamples = inner_folds, #same folds as xgboost
+      resamples = inner_folds, 
       grid = hyperparameters_XGB_tidy, #same setting as xgboost
       metrics = metrics,
       control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
@@ -530,25 +522,22 @@ for(dataset in datasets) {
     train_RE <- train
     test_RE <- test
     
-    if(dataset_counter==1) {
-      # Find the three levels with the lowest frequency
-
-      lowest_levels_X4 <- names(sort(table(train$X4))[1:4])
-      lowest_levels_X17 <- names(sort(table(train$X17))[1:2])
-      
-      # Combine the three lowest levels into a new level, for example, "Other"
-      train_RE$X4 <- factor(ifelse(train_RE$X4 %in% lowest_levels_X4, "Other", as.character(train_RE$X4)))
-      test_RE$X4 <- factor(ifelse(test_RE$X4 %in% lowest_levels_X4, "Other", as.character(test_RE$X4)))
-      train_RE$X17 <- factor(ifelse(train_RE$X17 %in% lowest_levels_X17, "Other", as.character(train_RE$X17)))
-      test_RE$X17 <- factor(ifelse(test_RE$X17 %in% lowest_levels_X17, "Other", as.character(test_RE$X17)))
-    }
+#    if(dataset_counter==1) {
+#      # Find the three levels with the lowest frequency
+#
+#      lowest_levels_X4 <- names(sort(table(train$X4))[1:4])
+#      lowest_levels_X17 <- names(sort(table(train$X17))[1:2])
+#      
+#      # Combine the three lowest levels into a new level, for example, "Other"
+#      train_RE$X4 <- factor(ifelse(train_RE$X4 %in% lowest_levels_X4, "Other", as.character(train_RE$X4)))
+#      test_RE$X4 <- factor(ifelse(test_RE$X4 %in% lowest_levels_X4, "Other", as.character(test_RE$X4)))
+#      train_RE$X17 <- factor(ifelse(train_RE$X17 %in% lowest_levels_X17, "Other", as.character(train_RE$X17)))
+#      test_RE$X17 <- factor(ifelse(test_RE$X17 %in% lowest_levels_X17, "Other", as.character(test_RE$X17)))
+#    }
       RE_recipe <- train_RE %>% recipe(label~.) %>% 
         step_impute_mean(all_numeric_predictors()) %>%
         step_impute_mode(all_string_predictors()) %>%
         step_impute_mode(all_factor_predictors()) %>%
-        step_zv(all_predictors()) %>%
-        step_dummy(all_string_predictors()) %>%
-        step_dummy(all_factor_predictors()) %>%
         step_zv(all_predictors())
       train_RE_baked <- RE_recipe %>%
         prep() %>%
