@@ -38,46 +38,62 @@ AUC_results <- metric_results
 Brier_results <- metric_results
 PG_results <- metric_results
 
-dataset_counter = 3
+dataset_counter = 4
 
 for(dataset in datasets) {
   
   
   # for GMSC only 3 repeats because large dataset
   if(dataset_counter==3) {nr_repeats <- 3} else {nr_repeats <- 5}
+  innerfolds = nr_repeats
   
+  # dummies for categories present in train and test so no new levels error
+  MINIMAL_recipe <- recipe(label ~., data = dataset) %>%
+    step_zv(all_predictors()) %>%
+    step_dummy(all_string_predictors()) %>%
+    step_dummy(all_factor_predictors())
+  
+  dataset <- MINIMAL_recipe %>% prep() %>% bake(dataset)
+
   set.seed(111)
   # create 5x2 folds
   folds <- vfold_cv(dataset, v = outerfolds, repeats = nr_repeats, strata = NULL)
-  for(i in 1:nrow(folds)) {
+  for(i in 6:nrow(folds)) { #CHANGE
     cat("Fold", i, "/ 10 \n")
     train <- analysis(folds$splits[[i]])
     test <- assessment(folds$splits[[i]])
     
     # formulate recipes
-    # for tree-based algorithms
-    MINIMAL_recipe <- recipe(label ~., data = train) %>%
+    # dummies for categories present in train and test so no new levels error
+    #MINIMAL_recipe <- recipe(label ~., data = rbind(train, test)) %>%
+    #  step_zv(all_predictors()) %>%
+    #  step_dummy(all_string_predictors()) %>%
+    #  step_dummy(all_factor_predictors())
+    #
+    #train <- MINIMAL_recipe %>% prep() %>% bake(folds)
+    #test <- MINIMAL_recipe %>% prep() %>% bake(test)
+    
+    # for tree-based that require dummies
+    TREE_recipe <- recipe(label ~., data = train) %>%
       step_impute_mean(all_numeric_predictors()) %>%
       step_impute_mode(all_string_predictors()) %>%
       step_impute_mode(all_factor_predictors()) %>%
-      step_zv(all_predictors())
+      step_zv()
     
-    # for tree-based that require dummies
-    TREE_recipe <- MINIMAL_recipe %>% step_dummy(all_string_predictors()) %>%
-      step_dummy(all_factor_predictors()) %>%
-      step_zv(all_predictors())
-    
+    winsorizable <- names(train)[get_splineworthy_columns(train)]
     
     # for algorithms using linear terms (LRR, gam, rule ensembles)
-    LINEAR_recipe <- MINIMAL_recipe %>%
-      step_hai_winsorized_truncate(all_numeric_predictors(), fraction = 0.025) %>%
-      step_rm(!contains("winsorized") & where(is.numeric)) %>%
-      step_normalize(all_numeric_predictors()) %>%
-      step_dummy(all_string_predictors()) %>%
-      step_dummy(all_factor_predictors()) %>%
-      step_zv(all_predictors())
+    LINEAR_recipe <- recipe(label ~., data = train) %>%
+      step_impute_mean(all_numeric_predictors()) %>%
+      step_impute_mode(all_string_predictors()) %>%
+      step_impute_mode(all_factor_predictors()) %>%
+      step_hai_winsorized_truncate(all_of(winsorizable), fraction = 0.025) %>%
+      step_rm(all_of(winsorizable)) %>%
+      step_zv() %>%
+      step_normalize(all_numeric_predictors())
     
-    RULEFIT_recipe <- MINIMAL_recipe
+    
+    RULEFIT_recipe <- TREE_recipe
     
 
     innerseed <- i
@@ -108,8 +124,8 @@ for(dataset in datasets) {
     
     LRR_tuned <- tune::tune_grid(
       object = LRR_wf,
-      resamples = inner_folds, #same folds as xgboost
-      grid = hyperparameters_LR_R_tidy, #same setting as xgboost
+      resamples = inner_folds,
+      grid = hyperparameters_LR_R_tidy, 
       metrics = metrics,
       control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
     )
@@ -542,14 +558,17 @@ for(dataset in datasets) {
         bake(test_RE)
     
     
-    
+    #ntrees = 50: start 18:08, final rules created 18:18, done 18:20
+    #ntrees = 5: start 18:21, final rules 18:22, done 18:24
     set.seed(innerseed)
     RE_model <- train(RE_recipe, data = train_RE, method = "pre",
                       ntrees = 500, family = "binomial", trControl = ctrl,
                       tuneGrid = preGrid, ad.alpha = 0, singleconditions = TRUE,
                       winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
                       verbose = TRUE,
-                      metric = "AUCROC")
+                      metric = "AUCROC", allowParallel = TRUE,
+                      par.init=TRUE,
+                      par.final=TRUE)
     RE_learning_rate <- RE_model$bestTune$learnrate
     
     RE_preds <- predict(RE_model, test_RE, type = 'probs')
@@ -783,7 +802,7 @@ for(dataset in datasets) {
     SRE_train_scaled_winsorized <- SRE_train
     SRE_test_scaled_winsorized <- SRE_test
     SRE_train_scaled_winsorized[lapply(SRE_train, n_distinct)>2] <- lapply((SRE_train[lapply(SRE_train, n_distinct)>2]), function(x) 0.4*(Winsorize(x, probs = c(0.025,0.975)))/sd(x))
-    for (col in names(SRE_train)[sapply(SRE_train, function(x) n_distinct(x) > 2)]) {
+    for (col in names(SRE_train)[get_splineworthy_columns(SRE_train)]) {
       # Calculate winsorization limits for the current column in SRE_train
       winsor_limits <-  Winsorize(SRE_train[[col]], probs = c(0.025, 0.975))
       
@@ -792,23 +811,30 @@ for(dataset in datasets) {
       SRE_train_scaled_winsorized[[col]] <- 0.4*SRE_train_scaled_winsorized[[col]] / sd(SRE_train_scaled_winsorized[[col]])
       SRE_test_scaled_winsorized[[col]] <- 0.4*Winsorize(SRE_test[[col]], minval = min(winsor_limits), maxval = max(winsor_limits)) / sd(SRE_train_scaled_winsorized[[col]])
     }
+    SRE_recipe <- recipe(label~., data = SRE_train_scaled_winsorized) %>%
+      step_zv() 
+    
+    SRE_train_baked <- SRE_recipe %>% prep() %>% bake(SRE_train_scaled_winsorized)
+    SRE_test_baked <- SRE_recipe %>% prep() %>% bake(SRE_test_scaled_winsorized)
     
     set.seed(innerseed)
-    ridgetest <- cv.glmnet(label ~., data = SRE_train_scaled_winsorized,
+    ridgetest <- cv.glmnet(label ~., data = SRE_train_baked, #ERROR
               family = "binomial",
-              alpha = 0
+              alpha = 0,
+              parallel = TRUE
               )
     coeftest <- coef(ridgetest)
     set.seed(innerseed)
-    finallasso <- cv.glmnet(label ~., data = SRE_train_scaled_winsorized,
+    finallasso <- cv.glmnet(label ~., data = SRE_train_baked,
                             family = "binomial",
                             alpha = 1,
-                            penalty.factors = coeftest)
+                            penalty.factors = coeftest,
+                            parallel = TRUE)
     l1se_ind <- which(finallasso$lambda == finallasso$lambda.1se)
     #finallasso$nzero[l1se_ind]
     #coef(finallasso)
-    test_preds_SRE <- data.frame(predict(finallasso, SRE_test_scaled_winsorized, s = "lambda.1se", type = "response"))
-    test_preds_SRE$label <- SRE_test_scaled_winsorized$label
+    test_preds_SRE <- data.frame(predict(finallasso, SRE_test_baked, s = "lambda.1se", type = "response"))
+    test_preds_SRE$label <- SRE_test_baked$label
     colnames(test_preds_SRE) <- c("X1", "label")
     
     #AUC
@@ -824,10 +850,10 @@ for(dataset in datasets) {
     pg <- partialGini(test_preds_SRE$X1, test_preds_SRE$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
   }
-  write.csv(AUC_results, file = paste("./results/",dataset_vector[3],"_AUC.csv", sep = ""))
-  write.csv(Brier_results, file = paste("./results/",dataset_vector[3],"_BRIER.csv", sep = ""))
+  write.csv(AUC_results, file = paste("./results/",dataset_vector[4],"_AUC.csv", sep = ""))
+  write.csv(Brier_results, file = paste("./results/",dataset_vector[4],"_BRIER.csv", sep = ""))
   PG_results$metric<-unlist(PG_results$metric)
-  write.csv(PG_results, file = paste("./results/",dataset_vector[3],"_PG.csv", sep = ""))
+  write.csv(PG_results, file = paste("./results/",dataset_vector[4],"_PG.csv", sep = ""))
   
   dataset_counter <- dataset_counter + 1
 }
