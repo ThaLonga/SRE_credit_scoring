@@ -58,7 +58,7 @@ for(dataset in datasets) {
   set.seed(111)
   # create 5x2 folds
   folds <- vfold_cv(dataset, v = outerfolds, repeats = nr_repeats, strata = NULL)
-  for(i in 6:nrow(folds)) { #CHANGE
+  for(i in 1:nrow(folds)) { #CHANGE
     cat("Fold", i, "/ 10 \n")
     train <- analysis(folds$splits[[i]])
     test <- assessment(folds$splits[[i]])
@@ -87,9 +87,9 @@ for(dataset in datasets) {
       step_impute_mean(all_numeric_predictors()) %>%
       step_impute_mode(all_string_predictors()) %>%
       step_impute_mode(all_factor_predictors()) %>%
-      step_hai_winsorized_truncate(all_of(winsorizable), fraction = 0.025) %>%
-      step_rm(all_of(winsorizable)) %>%
-      step_zv() %>%
+      step_hai_winsorized_truncate(all_numeric_predictors(), fraction = 0.025) %>%
+      step_rm(!contains("winsorized") & all_numeric_predictors()) %>%
+      step_zv(all_predictors()) %>%
       step_normalize(all_numeric_predictors())
     
     
@@ -660,8 +660,8 @@ for(dataset in datasets) {
     
     #adalasso with initial ridge weights
     #INITIAL RIDGE
-
-    set.seed(innerseed)
+#
+#    set.seed(innerseed)
 #    inner_folds_SRE <- SRE_train %>% vfold_cv(v=5)
 #    ridge1 <- 
 #      parsnip::logistic_reg(
@@ -697,13 +697,15 @@ for(dataset in datasets) {
 #    
 #    ## Perform adaptive LASSO
 #
+#    auc_penalties <- c(1/abs(auc_ridge_coef$estimate[-1]))
+#    
 #    adaLasso_auc <- 
 #      parsnip::logistic_reg(
 #        mode = "classification",
 #        mixture = tune(),
 #        penalty = tune()
 #      ) %>%
-#      set_engine("glmnet", penalty.factor = (as.vector(auc_ridge_coef$estimate[-1])))
+#      set_engine("glmnet", penalty.factor = auc_penalties)
 #    
 #    adaLasso_wf_auc <- workflow() %>%
 #      add_formula(formula = label ~.) %>%
@@ -715,7 +717,7 @@ for(dataset in datasets) {
 #        mixture = tune(),
 #        penalty = tune()
 #      ) %>%
-#      set_engine("glmnet", penalty.factor = brier_ridge_coef$estimate[-1])
+#      set_engine("glmnet", penalty.factor = 1/abs(brier_ridge_coef$estimate[-1]))
 #    
 #    adaLasso_wf_brier <- workflow() %>%
 #      add_formula(formula = label ~.) %>%
@@ -727,7 +729,8 @@ for(dataset in datasets) {
 #        mixture = tune(),
 #        penalty = tune()
 #      ) %>%
-#      set_engine("glmnet", penalty.factor = pg_ridge_coef$estimate[-1])
+#      set_engine("glmnet"#, penalty.factor = 1/abs(pg_ridge_coef$estimate[-1]))
+#      )
 #    
 #    adaLasso_wf_pg <- workflow() %>%
 #      add_formula(formula = label ~.) %>%
@@ -738,7 +741,7 @@ for(dataset in datasets) {
 #      resamples = inner_folds_SRE,
 #      grid = expand.grid(list(mixture = 1, penalty = seq(0.001,0.1,length=100))), 
 #      metrics = metrics,
-#      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
+#      control = tune::control_grid(verbose = TRUE)
 #    )
 #    
 #    adaLasso_tuned_brier <- tune::tune_grid(
@@ -785,59 +788,194 @@ for(dataset in datasets) {
 #    SRE_pg_preds$label <- SRE_test$label
 #    pg <- partialGini(SRE_pg_preds$.pred_X1, SRE_pg_preds$label)
 #    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
-#    
+ 
+    
+    
+    ###################
+    
+    
+    
+       
     #without parsnip
     #winsorization and scaling
     SRE_train_scaled_winsorized <- SRE_train
     SRE_test_scaled_winsorized <- SRE_test
-    SRE_train_scaled_winsorized[lapply(SRE_train, n_distinct)>2] <- lapply((SRE_train[lapply(SRE_train, n_distinct)>2]), function(x) 0.4*(Winsorize(x, probs = c(0.025,0.975)))/sd(x))
-    for (col in names(SRE_train)[get_splineworthy_columns(SRE_train)]) {
-      # Calculate winsorization limits for the current column in SRE_train
-      winsor_limits <-  Winsorize(SRE_train[[col]], probs = c(0.025, 0.975))
-      
-      # Apply winsorization to the current column in both training and testing sets
-      SRE_train_scaled_winsorized[[col]] <- Winsorize(SRE_train[[col]], minval = min(winsor_limits), maxval = max(winsor_limits))
-      SRE_train_scaled_winsorized[[col]] <- 0.4*SRE_train_scaled_winsorized[[col]] / sd(SRE_train_scaled_winsorized[[col]])
-      SRE_test_scaled_winsorized[[col]] <- 0.4*Winsorize(SRE_test[[col]], minval = min(winsor_limits), maxval = max(winsor_limits)) / sd(SRE_train_scaled_winsorized[[col]])
-    }
-    SRE_recipe <- recipe(label~., data = SRE_train_scaled_winsorized) %>%
+    
+    winsorizable <- get_splineworthy_columns(SRE_train)
+    
+    #SRE_train_scaled_winsorized[lapply(SRE_train, n_distinct)>2] <- lapply((SRE_train[lapply(SRE_train, n_distinct)>2]), function(x) 0.4*(Winsorize(x, probs = c(0.025,0.975)))/sd(x))
+    #for (col in names(SRE_train)[get_splineworthy_columns(SRE_train)]) {
+    #  # Calculate winsorization limits for the current column in SRE_train
+    #  winsor_limits <-  Winsorize(SRE_train[[col]], probs = c(0.025, 0.975))
+    #  
+    #  # Apply winsorization to the current column in both training and testing sets
+    #  SRE_train_scaled_winsorized[[col]] <- Winsorize(SRE_train[[col]], minval = min(winsor_limits), maxval = max(winsor_limits))
+    #  SRE_train_scaled_winsorized[[col]] <- 0.4*SRE_train_scaled_winsorized[[col]] / sd(SRE_train_scaled_winsorized[[col]])
+    #  SRE_test_scaled_winsorized[[col]] <- 0.4*Winsorize(SRE_test[[col]], minval = min(winsor_limits), maxval = max(winsor_limits)) / sd(SRE_train_scaled_winsorized[[col]])
+    #}
+    SRE_recipe <- recipe(label~., data = SRE_train) %>%
+      step_hai_winsorized_truncate(all_of(names(SRE_train)[winsorizable])&!contains("s("), fraction = 0.025) %>%
+      step_rm(all_of(names(SRE_train)[winsorizable])&!contains("s(")) %>%
+      step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
       step_zv() 
     
-    SRE_train_baked <- SRE_recipe %>% prep() %>% bake(SRE_train_scaled_winsorized)
-    SRE_test_baked <- SRE_recipe %>% prep() %>% bake(SRE_test_scaled_winsorized)
+    SRE_train_baked <- SRE_recipe %>% prep() %>% bake(SRE_train)
+    SRE_test_baked <- SRE_recipe %>% prep() %>% bake(SRE_test)
+    
+    #DEFINITIVE ADALASSO?
+    # initial ridge coef
+    set.seed(innerseed)
+    ridge <- train(label ~., data = SRE_train_baked, #ERROR
+                       method = "glmnet",
+                       tuneGrid = expand.grid(alpha = 0, lambda = seq(0.001, 1, length = 100)),
+                       metric = "AUCROC",
+                       trControl = ctrl)
+    lambda_auc <- ridge$results$lambda[which.max(ridge$results$AUCROC)]
+    lambda_brier <- ridge$results$lambda[which.min(ridge$results$Brier)]
+    lambda_pg <- ridge$results$lambda[which.max(ridge$results$partialGini)]
     
     set.seed(innerseed)
-    ridgetest <- cv.glmnet(label ~., data = SRE_train_baked, #ERROR
-              family = "binomial",
-              alpha = 0,
-              parallel = TRUE
-              )
-    coeftest <- coef(ridgetest)
+    ridge_auc <- train(label ~., data = SRE_train_baked, 
+                       method = "glmnet",
+                       tuneGrid = expand.grid(alpha = 0, lambda = lambda_auc),
+                       trControl = trainControl(allowParallel = TRUE))    
     set.seed(innerseed)
-    finallasso <- cv.glmnet(label ~., data = SRE_train_baked,
-                            family = "binomial",
-                            alpha = 1,
-                            penalty.factors = coeftest,
-                            parallel = TRUE)
-    l1se_ind <- which(finallasso$lambda == finallasso$lambda.1se)
-    #finallasso$nzero[l1se_ind]
-    #coef(finallasso)
-    test_preds_SRE <- data.frame(predict(finallasso, SRE_test_baked, s = "lambda.1se", type = "response"))
-    test_preds_SRE$label <- SRE_test_baked$label
-    colnames(test_preds_SRE) <- c("X1", "label")
+    ridge_brier <- train(label ~., data = SRE_train_baked,
+                       method = "glmnet",
+                       tuneGrid = expand.grid(alpha = 0, lambda = lambda_brier),
+                       trControl = trainControl(allowParallel = TRUE))    
+    set.seed(innerseed)
+    ridge_pg <- train(label ~., data = SRE_train_baked, 
+                       method = "glmnet",
+                       tuneGrid = expand.grid(alpha = 0, lambda = lambda_pg),
+                       trControl = trainControl(allowParallel = TRUE))    
     
-    #AUC
-    g <- roc(label ~ X1, data = test_preds_SRE, direction = "<")
+    coef_ridge_auc <- coef(ridge_auc$finalModel, s=lambda_auc)
+    coef_ridge_brier <- coef(ridge_brier$finalModel, s=lambda_brier)
+    coef_ridge_pg <- coef(ridge_pg$finalModel, s=lambda_pg)
+    
+    
+    #final lasso
+    set.seed(innerseed)
+    adaLasso_auc <- train(label ~., data = SRE_train_baked, #ERROR
+                          method = "glmnet",
+                          tuneGrid = expand.grid(alpha = 1, lambda = seq(0.001, 1, length = 100)),
+                          penalty.factor = 1/abs(coef_ridge_auc)[-1],
+                          metric = "AUCROC",
+                          trControl = ctrl)
+    set.seed(innerseed)
+    adaLasso_brier <- train(label ~., data = SRE_train_baked, #ERROR
+                          method = "glmnet",
+                          tuneGrid = expand.grid(alpha = 1, lambda = seq(0.001, 1, length = 100)),
+                          penalty.factor = 1/abs(coef_ridge_brier)[-1],
+                          metric = "Brier",
+                          trControl = ctrl)
+    set.seed(innerseed)
+    adaLasso_pg <- train(label ~., data = SRE_train_baked, #ERROR
+                          method = "glmnet",
+                          tuneGrid = expand.grid(alpha = 1, lambda = seq(0.001, 1, length = 100)),
+                          penalty.factor = 1/abs(coef_ridge_pg)[-1],
+                          metric = "partialGini",
+                          trControl = ctrl)
+    
+    
+    preds_SRE_auc <- data.frame(predict(adaLasso_auc, SRE_test_baked, s = "lambda.min", type = "prob"))
+    preds_SRE_auc$label <- SRE_test_baked$label
+    #colnames(preds_SRE_auc) <- c("X1", "label")
+    
+    preds_SRE_brier <- data.frame(predict(adaLasso_brier, SRE_test_baked, s = "lambda.min", type = "prob"))
+    preds_SRE_brier$label <- SRE_test_baked$label
+    #colnames(preds_SRE_brier) <- c("X1", "label")
+    
+    preds_SRE_pg <- data.frame(predict(adaLasso_pg, SRE_test_baked, s = "lambda.min", type = "prob"))
+    preds_SRE_pg$label <- SRE_test_baked$label
+    #colnames(preds_SRE_pg) <- c("X1", "label")
+    
+    g <- roc(label ~ X1, data = preds_SRE_auc, direction = "<")
     AUC <- g$auc
     AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", AUC)
-    
-    #Brier
-    brier <- brier_class_vec(test_preds_SRE$label, test_preds_SRE$X1)
+
+    brier <- brier_class_vec(preds_SRE_brier$label, preds_SRE_brier$X1)
     Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", brier)
     
-    #PG
-    pg <- partialGini(test_preds_SRE$X1, test_preds_SRE$label)
+    pg <- partialGini(preds_SRE_pg$X1, preds_SRE_pg$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
+    
+    
+    #OR THIS ONE DEFINITIVE?
+    
+    #AUC
+#    set.seed(innerseed)
+#    ridgetest_auc <- cv.glmnet(label ~., data = SRE_train_baked, #ERROR
+#                                 family = "binomial",
+#                                 alpha = 0,
+#                                 parallel = TRUE,
+#                                 type.measure = "auc")
+#    
+#    ridgetest <- train(label ~., data = SRE_train_baked, #ERROR
+#                       method = "glmnet",
+#                       tuneGrid = expand.grid(alpha = 0, lambda = seq(0.001, 1, length = 100)),
+#                       metric = "AUCROC",
+#                       trControl = ctrl)
+#    
+#    coeftest_auc <- coef(ridgetest_auc)
+#    set.seed(innerseed)
+#    finallasso_auc <- cv.glmnet(label ~., data = SRE_train_baked,
+#                                  family = "binomial",
+#                                  alpha = 1,
+#                                  penalty.factor = 1/abs(coeftest_auc[-1]),
+#                                  parallel = TRUE,
+#                                  type.measure = "auc")
+#    l1se_ind_auc <- which(finallasso$lambda == finallasso$lambda.1se)
+#    #finallasso$nzero[l1se_ind]
+#    #coef(finallasso)
+#    test_preds_SRE_auc <- data.frame(predict(finallasso_auc, SRE_test_baked, s = "lambda.min", type = "response"))
+#    test_preds_SRE_auc$label <- SRE_test_baked$label
+#    colnames(test_preds_SRE_auc) <- c("X1", "label")
+#    
+#    g <- roc(label ~ X1, data = test_preds_SRE, direction = "<")
+#    AUC <- g$auc
+#    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", AUC)
+#    
+#    #brier
+#    set.seed(innerseed)
+#    ridgetest_brier <- cv.glmnet(label ~., data = SRE_train_baked, #ERROR
+#              family = "binomial",
+#              alpha = 0,
+#              parallel = TRUE,
+#              type.measure = "mse")
+#    coeftest_brier <- coef(ridgetest_brier)
+#    set.seed(innerseed)
+#    finallasso_brier <- cv.glmnet(label ~., data = SRE_train_baked,
+#                            family = "binomial",
+#                            alpha = 1,
+#                            penalty.factor = 1/abs(coeftest_brier[-1]),
+#                            parallel = TRUE,
+#                            type.measure = "mse")
+#    l1se_ind_brier <- which(finallasso$lambda == finallasso$lambda.1se)
+#    #finallasso$nzero[l1se_ind]
+#    #coef(finallasso)
+#    test_preds_SRE_brier <- data.frame(predict(finallasso_brier, SRE_test_baked, s = "lambda.min", type = "response"))
+#    test_preds_SRE_brier$label <- SRE_test_baked$label
+#    colnames(test_preds_SRE_brier) <- c("X1", "label")
+#    
+#    brier <- brier_class_vec(test_preds_SRE_brier$label, test_preds_SRE_brier$X1)
+#    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", brier)
+#    
+#    #PG
+#    
+#    coeftest_pg <- coef(ridgetest_pg)
+#    set.seed(innerseed)
+#    finallasso_pg <- cv.glmnet(label ~., data = SRE_train_baked,
+#                                  family = "binomial",
+#                                  alpha = 1,
+#                                  penalty.factor = coeftest_pg,
+#                                  parallel = TRUE,
+#                                  type.measure = "auc")
+#    l1se_ind_pg <- which(finallasso$lambda == finallasso$lambda.1se)
+#    
+#    pg <- partialGini(test_preds_SRE$X1, test_preds_SRE$label)
+#    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
   }
   write.csv(AUC_results, file = paste("./results/",dataset_vector[4],"_AUC.csv", sep = ""))
   write.csv(Brier_results, file = paste("./results/",dataset_vector[4],"_BRIER.csv", sep = ""))
