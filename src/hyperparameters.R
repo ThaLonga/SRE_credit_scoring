@@ -48,7 +48,7 @@ hyperparameters_XGB <- list(
 
 hyperparameters_XGB_tidy <- crossing(
   trees = c(10,50,100,250,500,1000), #L
-  learn_rate = c(0.001, 0.01, 0.1, 0.2, 0.5), #B
+  learn_rate = c(0.01, 0.01, 0.1, 0.2, 0.5), #B
   loss_reduction = c(0.5, 1, 1.5, 2), #B
   tree_depth = 6 #default
   #colsample_bytree = 1, #default
@@ -61,7 +61,7 @@ hyperparameters_XGB_tidy <- crossing(
 #LightGBM eventueel
 
 preGrid <- getModelInfo("pre")[[1]]$grid( 
-  maxdepth = 3,
+  maxdepth = c(2,3,4),
   learnrate = c(.01, .05, .1),
   penalty.par.val = c("lambda.1se"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
   sampfrac = 1,

@@ -53,7 +53,7 @@ for(dataset in datasets) {
     step_dummy(all_string_predictors()) %>%
     step_dummy(all_factor_predictors())
   
-  dataset <- MINIMAL_recipe %>% prep() %>% bake(dataset)
+  dataset <- MINIMAL_recipe %>% prep() %>% bake(dataset)                        #dit misschien trainen?
 
   set.seed(111)
   # create 5x2 folds
@@ -73,11 +73,20 @@ for(dataset in datasets) {
     #train <- MINIMAL_recipe %>% prep() %>% bake(folds)
     #test <- MINIMAL_recipe %>% prep() %>% bake(test)
     
-    # for tree-based that require dummies
+    # for tree-based that don't require dummies
     TREE_recipe <- recipe(label ~., data = train) %>%
       step_impute_mean(all_numeric_predictors()) %>%
       step_impute_mode(all_string_predictors()) %>%
       step_impute_mode(all_factor_predictors()) %>%
+      step_zv()
+    
+    # for tree-based that do require dummies
+    XGB_recipe <- recipe(label ~., data = train) %>%
+      step_impute_mean(all_numeric_predictors()) %>%
+      step_impute_mode(all_string_predictors()) %>%
+      step_impute_mode(all_factor_predictors()) %>%
+      step_dummy(all_string_predictors()) %>%
+      step_dummy(all_factor_predictors()) %>%
       step_zv()
     
     winsorizable <- names(train)[get_splineworthy_columns(train)]
@@ -89,6 +98,8 @@ for(dataset in datasets) {
       step_impute_mode(all_factor_predictors()) %>%
       step_hai_winsorized_truncate(all_numeric_predictors(), fraction = 0.025) %>%
       step_rm(!contains("winsorized") & all_numeric_predictors()) %>%
+      step_dummy(all_string_predictors()) %>%
+      step_dummy(all_factor_predictors()) %>%
       step_zv(all_predictors()) %>%
       step_normalize(all_numeric_predictors())
     
@@ -256,17 +267,31 @@ for(dataset in datasets) {
           tuneGrid = expand.grid(mincriterion = hyperparameters_CTREE$mincriterion),
           metric = "AUCROC")
 
+    #AUC
     CTREE_preds <- predict(CTREE_model, test, type = 'prob')
     CTREE_preds$label <- test$label
-    #AUC
+    
     g <- roc(label ~ X1, data = CTREE_preds, direction = "<")
     AUC <- g$auc
     AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "CTREE", AUC)
     #Brier
+    
+    CTREE_model_Brier <- train(TREE_recipe, data = train, method = "ctree",
+                               tuneGrid = expand.grid(mincriterion = (CTREE_model$results%>%slice_max(Brier)%>%select(mincriterion))[[1]])) 
+    CTREE_preds <- predict(CTREE_model_Brier, test, type = 'prob')
+    CTREE_preds$label <- test$label
+    
+    
     brier <- brier_class_vec(CTREE_preds$label, CTREE_preds$X1)
     Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "CTREE", brier)
     
     #PG
+    
+    CTREE_model_PG <- train(TREE_recipe, data = train, method = "ctree",
+                               tuneGrid = expand.grid(mincriterion = (CTREE_model$results%>%slice_max(partialGini)%>%select(mincriterion))[[1]]))
+    CTREE_preds <- predict(CTREE_model_PG, test, type = 'prob')
+    CTREE_preds$label <- test$label
+    
     pg <- partialGini(CTREE_preds$X1, CTREE_preds$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "CTREE", pg)
     
@@ -312,7 +337,7 @@ for(dataset in datasets) {
       set.seed(innerseed)
       print(ntree)
       
-      RF_model <- train(TREE_recipe, data = train_RF, method = "ranger", trControl = ctrl,
+      RF_model <- train(TREE_recipe, data = train, method = "ranger", trControl = ctrl,
                         tuneGrid = expand.grid(mtry = hyperparameters_RF$mtry,
                                                splitrule = hyperparameters_RF$splitrule,
                                                min.node.size = hyperparameters_RF$min.node.size),
@@ -409,7 +434,7 @@ for(dataset in datasets) {
       set_engine("xgboost")
     
     xgb_wf <- workflow() %>%
-      add_recipe(TREE_recipe) %>%
+      add_recipe(XGB_recipe) %>%
       add_model(xgb_model)
     print(hyperparameters_XGB_tidy)
     
@@ -431,8 +456,8 @@ for(dataset in datasets) {
     final_xgb_wf_brier <- xgb_wf %>% finalize_workflow(best_booster_brier)
     final_xgb_fit_brier <- final_xgb_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
 
-    best_model_pg <- xgb_tuned %>% select_best_pg_XGB()
-    final_xgb_wf_pg <- xgb_wf %>% finalize_workflow(best_model_pg)
+    best_booster_pg <- xgb_tuned %>% select_best_pg_XGB()
+    final_xgb_wf_pg <- xgb_wf %>% finalize_workflow(best_booster_pg)
     final_xgb_fit_pg <- final_xgb_wf_pg %>% last_fit(folds$splits[[i]], metrics = metrics)
     
     
@@ -509,7 +534,7 @@ for(dataset in datasets) {
     
     pg <- final_xgb_fit_pg %>%
       collect_pg()
-    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", pg)
+    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "LGBM", pg)
     
     ############################################################################
     # HETEROGENEOUS (RULE) ENSEMBLES 
@@ -550,7 +575,7 @@ for(dataset in datasets) {
     #ntrees = 50: start 18:08, final rules created 18:18, done 18:20
     #ntrees = 5: start 18:21, final rules 18:22, done 18:24
     set.seed(innerseed)
-    RE_model <- train(RE_recipe, data = train_RE, method = "pre",
+    RE_model <- train(XGB_recipe, data = train, method = "pre",
                       ntrees = 500, family = "binomial", trControl = ctrl,
                       tuneGrid = preGrid, ad.alpha = 0, singleconditions = TRUE,
                       winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
@@ -559,6 +584,13 @@ for(dataset in datasets) {
                       par.init=TRUE,
                       par.final=TRUE)
     RE_learning_rate <- RE_model$bestTune$learnrate
+    
+    
+    
+    
+    
+    
+    
     
     RE_preds <- predict(RE_model, test_RE, type = 'probs')
     RE_preds$label <- test_RE$label
