@@ -592,19 +592,135 @@ for(dataset in datasets) {
     
     
     
+    #AUC
     RE_preds <- predict(RE_model, test_RE, type = 'probs')
     RE_preds$label <- test_RE$label
-    #AUC
+    
     g <- roc(label ~ X1, data = RE_preds, direction = "<")
     AUC <- g$auc
     AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", AUC)
+    
     #Brier
+    RE_model_Brier <- train(XGB_recipe, data = train, method = "pre",
+                            ntrees = 500, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+                            tuneGrid = getModelInfo("pre")[[1]]$grid( 
+                              maxdepth = (RE_model$results%>%slice_max(Brier)%>%select(maxdepth))[[1]],
+                              learnrate = (RE_model$results%>%slice_max(Brier)%>%select(learnrate))[[1]],
+                              penalty.par.val = c("lambda.1se"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
+                              sampfrac = 1,
+                              use.grad = TRUE), ad.alpha = 0, singleconditions = TRUE,
+                            winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
+                            verbose = TRUE,
+                            allowParallel = TRUE,
+                            par.init=TRUE,
+                            par.final=TRUE)
+    RE_preds <- predict(RE_model_Brier, test, type = 'prob')
+    RE_preds$label <- test$label
     brier <- brier_class_vec(RE_preds$label, RE_preds$X1)
     Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", brier)
     
     #PG
+    RE_model_PG <- train(XGB_recipe, data = train, method = "pre",
+                            ntrees = 500, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+                            tuneGrid = getModelInfo("pre")[[1]]$grid( 
+                              maxdepth = (RE_model$results%>%slice_max(partialGini)%>%select(maxdepth))[[1]],
+                              learnrate = (RE_model$results%>%slice_max(partialGini)%>%select(learnrate))[[1]],
+                              penalty.par.val = c("lambda.1se"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
+                              sampfrac = 1,
+                              use.grad = TRUE), ad.alpha = 0, singleconditions = TRUE,
+                            winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
+                            verbose = TRUE,
+                            metric = "AUCROC", allowParallel = TRUE,
+                            par.init=TRUE,
+                            par.final=TRUE)
+    RE_preds <- predict(RE_model_PG, test, type = 'prob')
+    RE_preds$label <- test$label
+    
     pg <- partialGini(RE_preds$X1, RE_preds$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", pg)
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    print("RE")
+    RE_model <- 
+      parsnip::rule_fit(
+        mode = "classification",
+        trees = 500,
+        tree_depth = tune(),
+        learn_rate = tune(),
+        penalty = tune()
+        ) %>%
+      set_engine("xrf") %>%
+      translate()
+    
+    RE_wf <- workflow() %>%
+      add_recipe(XGB_recipe) %>%
+      add_model(RE_model)
+    
+    RE_tuned <- tune::tune_grid(
+      object = RE_wf,
+      resamples = inner_folds, 
+      grid = expand.grid( 
+        tree_depth = c(2,3,4),
+        learn_rate = c(.01, .05, .1),
+        penalty = c(.01, .05, .1, .2)
+        #mtry = sqrt(ncol(train_bake_x)*c(0.1,0.25,0.5,1,2,4)),
+      ), #same setting as xgboost
+      metrics = metrics,
+      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
+    )
+    
+    RE_tuned %>%
+      tune::show_best(metric = "brier_class") %>%
+      knitr::kable()
+    
+    best_booster_auc <- RE_tuned %>% select_best("roc_auc")
+    final_RE_wf_auc <- RE_wf %>% finalize_workflow(best_booster_auc)
+    final_RE_fit_auc <- final_RE_wf_auc %>% last_fit(folds$splits[[i]], metrics = metrics)
+    
+    best_booster_brier <- RE_tuned %>% select_best("brier_class")
+    final_RE_wf_brier <- RE_wf %>% finalize_workflow(best_booster_brier)
+    final_RE_fit_brier <- final_RE_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
+    
+    best_model_pg <- RE_tuned %>% select_best_pg_RE()
+    final_RE_wf_pg <- RE_wf %>% finalize_workflow(best_model_pg)
+    final_RE_fit_pg <- final_RE_wf_pg %>% last_fit(folds$splits[[i]], metrics = metrics)
+    
+    auc <- final_RE_fit_auc %>%
+      collect_metrics() %>%
+      filter(.metric == "roc_auc") %>%
+      pull(.estimate)
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", auc)
+    
+    brier <- final_RE_fit_brier %>%
+      collect_metrics() %>%
+      filter(.metric == "brier_class") %>%
+      pull(.estimate)
+    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", brier)
+    
+    pg <- final_RE_fit_pg %>%
+      collect_pg()
+    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", pg)
+    
+    
+    
+    
+    
+    
+    
     
     
     #####
@@ -681,14 +797,19 @@ for(dataset in datasets) {
       fitted_smooths_test[, j] <- fitted_values_test 
     }
     
-    train_rule_baked <- train_RE_baked
-    test_rule_baked <- test_RE_baked
-    
-    SRE_train_rules <- fit_rules(train_rule_baked, RE_model$finalModel$rules$description)
-    SRE_test_rules <- fit_rules(test_rule_baked, RE_model$finalModel$rules$description)
+    train_rule_baked <- XGB_recipe %>%
+      prep(train) %>%
+      bake(train)
+    test_rule_baked <- XGB_recipe %>%
+      prep(train) %>%
+      bake(test)    
+    SRE_train_rules <- fit_rules(train_rule_baked, drop_na(tibble(rules = coef(extract_fit_engine(final_RE_fit_auc))$rule))$rules)
+    SRE_test_rules <- fit_rules(test_rule_baked, drop_na(tibble(rules = coef(extract_fit_engine(final_RE_fit_auc))$rule))$rules)
     
     SRE_train <- cbind(SRE_train_rules, fitted_smooths_train)
     SRE_test <- cbind(SRE_test_rules, fitted_smooths_test)
+    
+
     
     #adalasso with initial ridge weights
     #INITIAL RIDGE
@@ -849,10 +970,72 @@ for(dataset in datasets) {
       step_hai_winsorized_truncate(all_of(names(SRE_train)[winsorizable])&!contains("s("), fraction = 0.025) %>%
       step_rm(all_of(names(SRE_train)[winsorizable])&!contains("s(")) %>%
       step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
-      step_zv() 
+      step_zv()
     
     SRE_train_baked <- SRE_recipe %>% prep() %>% bake(SRE_train)
-    SRE_test_baked <- SRE_recipe %>% prep() %>% bake(SRE_test)
+    SRE_test_baked <- SRE_recipe %>% prep(SRE_train) %>% bake(SRE_test)
+    
+    
+    
+    
+    
+    
+    
+    
+    #regular lasso
+    SRE_model <- 
+      parsnip::logistic_reg(
+        mode = "classification",
+        mixture = 1,
+        penalty = tune()
+      ) %>%
+      set_engine("glmnet")
+    
+    SRE_wf <- workflow() %>%
+      add_formula(label~.) %>%
+      #add_recipe(LINEAR_recipe) %>%
+      add_model(SRE_model)
+    
+    SRE_tuned <- tune::tune_grid(
+      object = SRE_wf,
+      resamples = inner_folds,
+      grid = hyperparameters_SRE_tidy, 
+      metrics = metrics,
+      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
+    )
+    
+    best_model_auc <- SRE_tuned %>% select_best("roc_auc")
+    final_SRE_wf_auc <- SRE_wf %>% finalize_workflow(best_model_auc)
+    final_SRE_fit_auc <- final_SRE_wf_auc %>% last_fit(folds$splits[[i]], metrics = metrics)
+    
+    best_model_brier <- SRE_tuned %>% select_best("brier_class")
+    final_SRE_wf_brier <- SRE_wf %>% finalize_workflow(best_model_brier)
+    final_SRE_fit_brier <- final_SRE_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
+    
+    best_model_pg <- SRE_tuned %>% select_best_pg_SRE()
+    final_SRE_wf_pg <- SRE_wf %>% finalize_workflow(best_model_pg)
+    final_SRE_fit_pg <- final_SRE_wf_pg %>% last_fit(folds$splits[[i]], metrics = metrics)
+    
+    
+    
+    auc <- final_SRE_fit_auc %>%
+      collect_metrics() %>%
+      filter(.metric == "roc_auc") %>%
+      pull(.estimate)
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", auc)
+    
+    brier <- final_SRE_fit_brier %>%
+      collect_metrics() %>%
+      filter(.metric == "brier_class") %>%
+      pull(.estimate)
+    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", brier)
+    
+    pg <- final_SRE_fit_pg %>%
+      collect_pg()
+    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
+    
+    
+    
     
     #DEFINITIVE ADALASSO?
     # initial ridge coef
@@ -885,7 +1068,6 @@ for(dataset in datasets) {
     coef_ridge_auc <- coef(ridge_auc$finalModel, s=lambda_auc)
     coef_ridge_brier <- coef(ridge_brier$finalModel, s=lambda_brier)
     coef_ridge_pg <- coef(ridge_pg$finalModel, s=lambda_pg)
-    
     
     #final lasso
     set.seed(innerseed)
@@ -932,82 +1114,7 @@ for(dataset in datasets) {
     
     pg <- partialGini(preds_SRE_pg$X1, preds_SRE_pg$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
-    
-    
-    #OR THIS ONE DEFINITIVE?
-    
-    #AUC
-#    set.seed(innerseed)
-#    ridgetest_auc <- cv.glmnet(label ~., data = SRE_train_baked, #ERROR
-#                                 family = "binomial",
-#                                 alpha = 0,
-#                                 parallel = TRUE,
-#                                 type.measure = "auc")
-#    
-#    ridgetest <- train(label ~., data = SRE_train_baked, #ERROR
-#                       method = "glmnet",
-#                       tuneGrid = expand.grid(alpha = 0, lambda = seq(0.001, 1, length = 100)),
-#                       metric = "AUCROC",
-#                       trControl = ctrl)
-#    
-#    coeftest_auc <- coef(ridgetest_auc)
-#    set.seed(innerseed)
-#    finallasso_auc <- cv.glmnet(label ~., data = SRE_train_baked,
-#                                  family = "binomial",
-#                                  alpha = 1,
-#                                  penalty.factor = 1/abs(coeftest_auc[-1]),
-#                                  parallel = TRUE,
-#                                  type.measure = "auc")
-#    l1se_ind_auc <- which(finallasso$lambda == finallasso$lambda.1se)
-#    #finallasso$nzero[l1se_ind]
-#    #coef(finallasso)
-#    test_preds_SRE_auc <- data.frame(predict(finallasso_auc, SRE_test_baked, s = "lambda.min", type = "response"))
-#    test_preds_SRE_auc$label <- SRE_test_baked$label
-#    colnames(test_preds_SRE_auc) <- c("X1", "label")
-#    
-#    g <- roc(label ~ X1, data = test_preds_SRE, direction = "<")
-#    AUC <- g$auc
-#    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", AUC)
-#    
-#    #brier
-#    set.seed(innerseed)
-#    ridgetest_brier <- cv.glmnet(label ~., data = SRE_train_baked, #ERROR
-#              family = "binomial",
-#              alpha = 0,
-#              parallel = TRUE,
-#              type.measure = "mse")
-#    coeftest_brier <- coef(ridgetest_brier)
-#    set.seed(innerseed)
-#    finallasso_brier <- cv.glmnet(label ~., data = SRE_train_baked,
-#                            family = "binomial",
-#                            alpha = 1,
-#                            penalty.factor = 1/abs(coeftest_brier[-1]),
-#                            parallel = TRUE,
-#                            type.measure = "mse")
-#    l1se_ind_brier <- which(finallasso$lambda == finallasso$lambda.1se)
-#    #finallasso$nzero[l1se_ind]
-#    #coef(finallasso)
-#    test_preds_SRE_brier <- data.frame(predict(finallasso_brier, SRE_test_baked, s = "lambda.min", type = "response"))
-#    test_preds_SRE_brier$label <- SRE_test_baked$label
-#    colnames(test_preds_SRE_brier) <- c("X1", "label")
-#    
-#    brier <- brier_class_vec(test_preds_SRE_brier$label, test_preds_SRE_brier$X1)
-#    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", brier)
-#    
-#    #PG
-#    
-#    coeftest_pg <- coef(ridgetest_pg)
-#    set.seed(innerseed)
-#    finallasso_pg <- cv.glmnet(label ~., data = SRE_train_baked,
-#                                  family = "binomial",
-#                                  alpha = 1,
-#                                  penalty.factor = coeftest_pg,
-#                                  parallel = TRUE,
-#                                  type.measure = "auc")
-#    l1se_ind_pg <- which(finallasso$lambda == finallasso$lambda.1se)
-#    
-#    pg <- partialGini(test_preds_SRE$X1, test_preds_SRE$label)
-#    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
+
   }
   write.csv(AUC_results, file = paste("./results/",dataset_vector[4],"_AUC.csv", sep = ""))
   write.csv(Brier_results, file = paste("./results/",dataset_vector[4],"_BRIER.csv", sep = ""))
