@@ -93,7 +93,7 @@ select_best_pg_LRR <- function(.data) {
       ungroup() %>%
       slice_max(partial_gini) %>%
       slice_head() %>%
-      select(penalty, mixture, .config)})
+      dplyr::select(penalty, mixture, .config)})
 }
 
 select_best_pg_SRE <- function(.data) {
@@ -104,7 +104,7 @@ select_best_pg_SRE <- function(.data) {
       ungroup() %>%
       slice_max(partial_gini) %>%
       slice_head() %>%
-      select(penalty, .config)})
+      dplyr::select(penalty, .config)})
 }
 
 select_best_pg_XGB <- function(.data) {
@@ -115,7 +115,7 @@ select_best_pg_XGB <- function(.data) {
       ungroup() %>%
       slice_max(partial_gini) %>%
       slice_head() %>%
-      select(trees, tree_depth, learn_rate, loss_reduction, .config)})
+      dplyr::select(trees, tree_depth, learn_rate, loss_reduction, .config)})
 }
 
 select_best_pg_RE <- function(.data) {
@@ -126,7 +126,7 @@ select_best_pg_RE <- function(.data) {
       ungroup() %>%
       slice_max(partial_gini) %>%
       slice_head() %>%
-      select(tree_depth, learn_rate, penalty, .config)})
+      dplyr::select(tree_depth, learn_rate, penalty, .config)})
 }
 
 

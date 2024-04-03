@@ -252,7 +252,7 @@ for(dataset in datasets) {
     AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", AUC)
     print(AUC)
     
-    brier <- brier_score(LDA_preds$X1, LDA_preds$label)
+    brier <- brier_score(preds = LDA_preds$X1, truth = LDA_preds$label)
     Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", brier)
     
     partialGini(actuals = LDA_preds$label, preds = LDA_preds$X1)
