@@ -103,10 +103,16 @@ for(dataset in datasets) {
       step_zv(all_predictors()) %>%
       step_normalize(all_numeric_predictors())
     
-    
     RULEFIT_recipe <- TREE_recipe
     
+    
+    
+    #Needed for RF hyperparameters
+    train_bake <- XGB_recipe %>% prep(train) %>% bake(train)
+    test_bake <- XGB_recipe %>% prep(train) %>% bake(test)
+    train_bake_x <- train_bake %>% dplyr::select(-label)
 
+    
     innerseed <- i
     
     ############################################################################
@@ -176,10 +182,6 @@ for(dataset in datasets) {
     #####
     print("GAM")
     
-    #preprocessing as no hyperparameters to be tuned
-    train_bake <- LINEAR_recipe %>% prep(train) %>% bake(train)
-    test_bake <- LINEAR_recipe %>% prep(train) %>% bake(test)
-    train_bake_x <- train_bake %>% dplyr::select(-label)
     GAM_recipe <- recipe(label~., data = train) %>%
       step_impute_mean(all_numeric_predictors()) %>%
       step_impute_mode(all_string_predictors()) %>%
@@ -305,7 +307,7 @@ for(dataset in datasets) {
     CTREE_preds$label <- test$label
     
     
-    brier <- brier_class_vec(CTREE_preds$label, CTREE_preds$X1)
+    brier <- brier_score(truth = CTREE_preds$label, preds = CTREE_preds$X1)
     Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "CTREE", brier)
     
     #PG
@@ -330,31 +332,6 @@ for(dataset in datasets) {
     #reload hyperparameters because it uses ncol(train_bake_x)
     source("./src/hyperparameters.R")
     
-    train_RF <- train
-    test_RF <- test
-    
-#    if(dataset_counter==1) {
-#      # Find the three levels with the lowest frequency
-#
-#      lowest_levels_X4 <- names(sort(table(train$X4))[1:4])
-#      
-#      # Combine the three lowest levels into a new level, for example, "Other"
-#      train_RF$X4 <- factor(ifelse(train_RF$X4 %in% lowest_levels_X4, "Other", as.character(train_RF$X4)))
-#      test_RF$X4 <- factor(ifelse(test_RF$X4 %in% lowest_levels_X4, "Other", as.character(test_RF$X4)))
-#    }
-#      RF_recipe <- train_RF %>% recipe(label~.) %>% 
-#        step_impute_mean(all_numeric_predictors()) %>%
-#        step_impute_mode(all_string_predictors()) %>%
-#        step_impute_mode(all_factor_predictors()) %>%
-#        step_zv(all_predictors())
-#      train_RF_bake <- RF_recipe %>%
-#        prep() %>%
-#        bake(train_RF)
-#      test_RF_bake <- RF_recipe %>%
-#        prep() %>%
-#        bake(test_RF)
-#    
-    
     modellist <- list()
     for (ntree in c(100,250,500,750,1000)){
       set.seed(innerseed)
@@ -373,27 +350,27 @@ for(dataset in datasets) {
     
     #AUC
     RF_model_AUC <- extractBestModel(modellist, "AUCROC")
-    RF_preds_AUC <- data.frame(predict(RF_model_AUC, test_RF, type = 'prob'))
+    RF_preds_AUC <- data.frame(predict(RF_model_AUC, test, type = 'prob'))
     names(RF_preds_AUC) <- c("X0", "X1")
-    RF_preds_AUC$label <- test_RF$label
+    RF_preds_AUC$label <- test$label
     g <- roc(label ~ X1, data = RF_preds_AUC, direction = "<")
     AUC <- g$auc
     AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", AUC)
     
     #PG
     RF_model_PG <- extractBestModel(modellist, "partialGini")
-    RF_preds_PG <- data.frame(predict(RF_model_PG, test_RF, type = 'prob'))
+    RF_preds_PG <- data.frame(predict(RF_model_PG, test, type = 'prob'))
     names(RF_preds_PG) <- c("X0", "X1")
-    RF_preds_PG$label <- test_RF$label
+    RF_preds_PG$label <- test$label
     pg <- partialGini(RF_preds_PG$X1, RF_preds_PG$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", pg)
     
     #Brier
     RF_model_Brier <- extractBestModel(modellist, "Brier")
-    RF_preds_Brier <- data.frame(predict(RF_model_Brier, test_RF, type = 'prob'))
+    RF_preds_Brier <- data.frame(predict(RF_model_Brier, test, type = 'prob'))
     names(RF_preds_Brier) <- c("X0", "X1")
-    RF_preds_Brier$label <- test_RF$label
-    bs <- mean(((as.numeric(RF_preds_Brier$label)-1) - RF_preds_Brier$X1)^2)
+    RF_preds_Brier$label <- test$label
+    bs <- brier_score(truth = RF_preds_Brier$label, preds = RF_preds_Brier$X1)
     Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", bs)
     
     
@@ -403,48 +380,6 @@ for(dataset in datasets) {
     print("XGB")
 
     set.seed(innerseed)
-    
-#    XGB_model <- train(TREE_recipe, data = train, method = "xgbTree", trControl = ctrl,
-#                      tuneGrid = expand.grid(nrounds = hyperparameters_XGB$nrounds,
-#                                             eta = hyperparameters_XGB$eta,
-#                                             gamma = hyperparameters_XGB$gamma,
-#                                             max_depth = hyperparameters_XGB$max_depth,
-#                                             colsample_bytree = hyperparameters_XGB$colsample_bytree,
-#                                             min_child_weight = hyperparameters_XGB$min_child_weight,
-#                                             subsample = hyperparameters_XGB$subsample),
-#                      allowParallel = TRUE
-#                      )
-#
-#    XGB_preds <- predict(XGB_model, test, type = 'prob')
-#    XGB_preds$label <- test$label
-#    #AUC
-#    best_model_auc <- getModelInfo("glmnet")$grid %>%
-#      filter(AUC == max(AUC)) %>%
-#      slice(1) %>%
-#      .$model
-#    
-#    
-#    
-#    
-#    g <- roc(label ~ X1, data = XGB_preds, direction = "<")
-#    AUC <- g$auc
-#    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", AUC)
-#    print(AUC)
-#   
-#    #PG
-#    pg <- partialGini(XGB_preds$X1, XGB_preds$label, 0.4)
-#    pg
-#   
-#    #Brier
-#    bs <- mean(((as.numeric(XGB_preds$label)-1) - XGB_preds$X1)^2)
-#    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", bs)
-#    bs
-#   
-  
-   
-   
-    #tidymodels
-    # WERKT NOG NIET MET PG
     
     xgb_model <- 
       parsnip::boost_tree(
@@ -459,9 +394,7 @@ for(dataset in datasets) {
     xgb_wf <- workflow() %>%
       add_recipe(XGB_recipe) %>%
       add_model(xgb_model)
-    print(hyperparameters_XGB_tidy)
-    
-    
+
     xgb_tuned <- tune::tune_grid(
       object = xgb_wf,
       resamples = inner_folds,
@@ -470,7 +403,6 @@ for(dataset in datasets) {
       control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
     )
 
-    
     best_booster_auc <- xgb_tuned %>% select_best("roc_auc")
     final_xgb_wf_auc <- xgb_wf %>% finalize_workflow(best_booster_auc)
     final_xgb_fit_auc <- final_xgb_wf_auc %>% last_fit(folds$splits[[i]], metrics = metrics)
@@ -527,10 +459,6 @@ for(dataset in datasets) {
       control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
     )
     
-    lgbm_tuned %>%
-      tune::show_best(metric = "brier_class") %>%
-      knitr::kable()
-    
     best_booster_auc <- lgbm_tuned %>% select_best("roc_auc")
     final_lgbm_wf_auc <- lgbm_wf %>% finalize_workflow(best_booster_auc)
     final_lgbm_fit_auc <- final_lgbm_wf_auc %>% last_fit(folds$splits[[i]], metrics = metrics)
@@ -567,57 +495,26 @@ for(dataset in datasets) {
     # RE
     #####
     print("RE")
-    train_RE <- train
-    test_RE <- test
+
+    RE_recipe <- train %>% recipe(label~.) %>% 
+      step_impute_mean(all_numeric_predictors()) %>%
+      step_impute_mode(all_string_predictors()) %>%
+      step_impute_mode(all_factor_predictors()) %>%
+      step_zv(all_predictors())
     
-#    if(dataset_counter==1) {
-#      # Find the three levels with the lowest frequency
-#
-#      lowest_levels_X4 <- names(sort(table(train$X4))[1:4])
-#      lowest_levels_X17 <- names(sort(table(train$X17))[1:2])
-#      
-#      # Combine the three lowest levels into a new level, for example, "Other"
-#      train_RE$X4 <- factor(ifelse(train_RE$X4 %in% lowest_levels_X4, "Other", as.character(train_RE$X4)))
-#      test_RE$X4 <- factor(ifelse(test_RE$X4 %in% lowest_levels_X4, "Other", as.character(test_RE$X4)))
-#      train_RE$X17 <- factor(ifelse(train_RE$X17 %in% lowest_levels_X17, "Other", as.character(train_RE$X17)))
-#      test_RE$X17 <- factor(ifelse(test_RE$X17 %in% lowest_levels_X17, "Other", as.character(test_RE$X17)))
-#    }
-      RE_recipe <- train_RE %>% recipe(label~.) %>% 
-        step_impute_mean(all_numeric_predictors()) %>%
-        step_impute_mode(all_string_predictors()) %>%
-        step_impute_mode(all_factor_predictors()) %>%
-        step_zv(all_predictors())
-      train_RE_baked <- RE_recipe %>%
-        prep() %>%
-        bake(train_RE)
-      test_RE_baked <- RE_recipe %>%
-        prep() %>%
-        bake(test_RE)
-    
-    
-    #ntrees = 50: start 18:08, final rules created 18:18, done 18:20
-    #ntrees = 5: start 18:21, final rules 18:22, done 18:24
     set.seed(innerseed)
     RE_model <- train(XGB_recipe, data = train, method = "pre",
-                      ntrees = 500, family = "binomial", trControl = ctrl,
+                      ntrees = min(500, nrow(train)/2), family = "binomial", trControl = ctrl,
                       tuneGrid = preGrid, ad.alpha = 0, singleconditions = TRUE,
                       winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
                       verbose = TRUE,
                       metric = "AUCROC", allowParallel = TRUE,
                       par.init=TRUE,
-                      par.final=TRUE)
-    RE_learning_rate <- RE_model$bestTune$learnrate
-    
-    
-    
-    
-    
-    
-    
+                      par.final=TRUE)    
     
     #AUC
-    RE_preds <- predict(RE_model, test_RE, type = 'probs')
-    RE_preds$label <- test_RE$label
+    RE_preds <- predict(RE_model, test, type = 'probs')
+    RE_preds$label <- test$label
     
     g <- roc(label ~ X1, data = RE_preds, direction = "<")
     AUC <- g$auc
@@ -625,7 +522,7 @@ for(dataset in datasets) {
     
     #Brier
     RE_model_Brier <- train(XGB_recipe, data = train, method = "pre",
-                            ntrees = 500, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+                            ntrees = min(500, nrow(train)/2), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
                             tuneGrid = getModelInfo("pre")[[1]]$grid( 
                               maxdepth = (RE_model$results%>%slice_max(Brier)%>%dplyr::select(maxdepth))[[1]],
                               learnrate = (RE_model$results%>%slice_max(Brier)%>%dplyr::select(learnrate))[[1]],
@@ -639,12 +536,12 @@ for(dataset in datasets) {
                             par.final=TRUE)
     RE_preds <- predict(RE_model_Brier, test, type = 'prob')
     RE_preds$label <- test$label
-    brier <- brier_class_vec(RE_preds$label, RE_preds$X1)
+    brier <- brier_score(truth = RE_preds$label, preds = RE_preds$X1)
     Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", brier)
     
     #PG
     RE_model_PG <- train(XGB_recipe, data = train, method = "pre",
-                            ntrees = 500, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+                            ntrees = min(500, nrow(train)/2), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
                             tuneGrid = getModelInfo("pre")[[1]]$grid( 
                               maxdepth = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(maxdepth))[[1]],
                               learnrate = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(learnrate))[[1]],
@@ -661,89 +558,6 @@ for(dataset in datasets) {
     
     pg <- partialGini(RE_preds$X1, RE_preds$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", pg)
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    print("RE")
-    RE_model <- 
-      parsnip::rule_fit(
-        mode = "classification",
-        trees = 500,
-        tree_depth = tune(),
-        learn_rate = tune(),
-        penalty = tune()
-        ) %>%
-      set_engine("xrf") %>%
-      translate()
-    
-    RE_wf <- workflow() %>%
-      add_recipe(XGB_recipe) %>%
-      add_model(RE_model)
-    
-    RE_tuned <- tune::tune_grid(
-      object = RE_wf,
-      resamples = inner_folds, 
-      grid = expand.grid( 
-        tree_depth = c(2,3,4),
-        learn_rate = c(.01, .05, .1),
-        penalty = c(.01, .05, .1, .2)
-        #mtry = sqrt(ncol(train_bake_x)*c(0.1,0.25,0.5,1,2,4)),
-      ), #same setting as xgboost
-      metrics = metrics,
-      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
-    )
-    
-    RE_tuned %>%
-      tune::show_best(metric = "brier_class") %>%
-      knitr::kable()
-    
-    best_booster_auc <- RE_tuned %>% select_best("roc_auc")
-    final_RE_wf_auc <- RE_wf %>% finalize_workflow(best_booster_auc)
-    final_RE_fit_auc <- final_RE_wf_auc %>% last_fit(folds$splits[[i]], metrics = metrics)
-    
-    best_booster_brier <- RE_tuned %>% select_best("brier_class")
-    final_RE_wf_brier <- RE_wf %>% finalize_workflow(best_booster_brier)
-    final_RE_fit_brier <- final_RE_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
-    
-    best_model_pg <- RE_tuned %>% select_best_pg_RE()
-    final_RE_wf_pg <- RE_wf %>% finalize_workflow(best_model_pg)
-    final_RE_fit_pg <- final_RE_wf_pg %>% last_fit(folds$splits[[i]], metrics = metrics)
-    
-    auc <- final_RE_fit_auc %>%
-      collect_metrics() %>%
-      filter(.metric == "roc_auc") %>%
-      pull(.estimate)
-    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", auc)
-    
-    brier <- final_RE_fit_brier %>%
-      collect_metrics() %>%
-      filter(.metric == "brier_class") %>%
-      pull(.estimate)
-    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", brier)
-    
-    pg <- final_RE_fit_pg %>%
-      collect_pg()
-    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", pg)
-    
-    
-    
-    
-    
-    
-    
     
     
     #####
@@ -806,7 +620,7 @@ for(dataset in datasets) {
     #####
     print("SRE")
     #extract smooth term names for SRE
-    smooth_terms <- grep("s\\(", unlist(str_split(as.character(formula(GAM_model))[3], " \\+ ")), value = TRUE)
+    smooth_terms <- grep("s\\(", unlist(str_split(as.character(formula), " \\+ ")), value = TRUE)
     # Extract and fitted values for each smooth term
     fitted_smooths_train <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(train_bake)))
     fitted_smooths_test <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(test_bake)))
@@ -814,9 +628,9 @@ for(dataset in datasets) {
     colnames(fitted_smooths_test) <- smooth_terms
     for (j in seq_along(smooth_terms)) {
       current_smooth <- smooth_terms[j]
-      fitted_values_train <- predict(GAM_model, type = "terms")[, current_smooth]
+      fitted_values_train <- predict(extract_fit_engine(final_GAM_fit), type = "terms")[, current_smooth]
       fitted_smooths_train[, j] <- fitted_values_train
-      fitted_values_test <- predict(GAM_model, test_bake, type = "terms")[, current_smooth]
+      fitted_values_test <- predict(extract_fit_engine(final_GAM_fit), test_bake, type = "terms")[, current_smooth]
       fitted_smooths_test[, j] <- fitted_values_test 
     }
     
@@ -826,8 +640,8 @@ for(dataset in datasets) {
     test_rule_baked <- XGB_recipe %>%
       prep(train) %>%
       bake(test)    
-    SRE_train_rules <- fit_rules(train_rule_baked, drop_na(tibble(rules = coef(extract_fit_engine(final_RE_fit_auc))$rule))$rules)
-    SRE_test_rules <- fit_rules(test_rule_baked, drop_na(tibble(rules = coef(extract_fit_engine(final_RE_fit_auc))$rule))$rules)
+    SRE_train_rules <- fit_rules(train_rule_baked, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
+    SRE_test_rules <- fit_rules(test_rule_baked, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
     
     SRE_train <- cbind(SRE_train_rules, fitted_smooths_train)
     SRE_test <- cbind(SRE_test_rules, fitted_smooths_test)
@@ -1139,10 +953,10 @@ for(dataset in datasets) {
 #    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
 #
   }
-  write.csv(AUC_results, file = paste("./results/",dataset_vector[4],"_AUC.csv", sep = ""))
-  write.csv(Brier_results, file = paste("./results/",dataset_vector[4],"_BRIER.csv", sep = ""))
+  write.csv(AUC_results, file = paste("./results/",dataset_vector[1],"_AUC.csv", sep = ""))
+  write.csv(Brier_results, file = paste("./results/",dataset_vector[1],"_BRIER.csv", sep = ""))
   PG_results$metric<-unlist(PG_results$metric)
-  write.csv(PG_results, file = paste("./results/",dataset_vector[4],"_PG.csv", sep = ""))
+  write.csv(PG_results, file = paste("./results/",dataset_vector[1],"_PG.csv", sep = ""))
   
   dataset_counter <- dataset_counter + 1
 }

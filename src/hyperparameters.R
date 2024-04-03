@@ -12,7 +12,7 @@ hyperparameters_LR_R_tidy <- expand.grid(list(
 ))
 
 hyperparameters_SRE_tidy <- expand.grid(list(
-  penalty = c(0, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5,1, 5, 10)
+  penalty = seq(0.001,1, length.out = 100)
 ))
 
 
