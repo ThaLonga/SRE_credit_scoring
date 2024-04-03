@@ -19,7 +19,7 @@ LR_R <- function(recipe, data = train, n_folds = 10, seed) {
 }
 
 get_splineworthy_columns <- function(X) {
-  return(lapply(X, n_distinct)>6)
+  return((lapply(X, n_distinct)>6) & unlist(lapply(X, is.numeric)))
 }
 
 #PG: cutoff = max probability of default
@@ -105,17 +105,6 @@ select_best_pg_SRE <- function(.data) {
       slice_max(partial_gini) %>%
       slice_head() %>%
       select(penalty, .config)})
-}
-
-select_best_pg_XGB <- function(.data) {
-  suppressMessages({.data %>%
-      collect_predictions(summarize = TRUE) %>%
-      group_by(trees, tree_depth, learn_rate, loss_reduction, .config) %>%
-      summarise(partial_gini = partialGini(.pred_X1, label)) %>%
-      ungroup() %>%
-      slice_max(partial_gini) %>%
-      slice_head() %>%
-      select(trees, tree_depth, learn_rate, loss_reduction, .config)})
 }
 
 select_best_pg_XGB <- function(.data) {

@@ -1,4 +1,8 @@
 #caret evaluation function for AUC, Brier score and partial Gini index
+brier_score <- function(truth, preds) {
+    mean((preds - ifelse(truth == "X1", 1, 0)) ^ 2)
+}
+
 BigSummary <- function (data, lev = NULL, model = NULL) {
   brscore <- try(mean((data[, lev[2]] - ifelse(data$obs == lev[2], 1, 0)) ^ 2),
                  silent = TRUE)

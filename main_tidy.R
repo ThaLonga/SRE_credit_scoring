@@ -1,6 +1,6 @@
 # main
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
-p_load(glmnet, glmnetUtils, mgcv, tidyverse, xgboost, DiagrammeR, stringr, tictoc, doParallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai, rlang, yardstick, bonsai, lightgbm, ranger, tune, DescTools)
+p_load(glmnet, glmnetUtils, mgcv, MASS, tidyverse, xgboost, DiagrammeR, stringr, tictoc, doParallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai, rlang, yardstick, bonsai, lightgbm, ranger, tune, DescTools, rules, discrim)
 #conventions:
 # target variable = label
 # indepentent variables = all others
@@ -48,12 +48,12 @@ for(dataset in datasets) {
   innerfolds = nr_repeats
   
   # dummies for categories present in train and test so no new levels error
-  MINIMAL_recipe <- recipe(label ~., data = dataset) %>%
-    step_zv(all_predictors()) %>%
-    step_dummy(all_string_predictors()) %>%
-    step_dummy(all_factor_predictors())
-  
-  dataset <- MINIMAL_recipe %>% prep() %>% bake(dataset)                        #dit misschien trainen?
+  #MINIMAL_recipe <- recipe(label ~., data = dataset) %>%
+  #  step_zv(all_predictors()) %>%
+  #  step_dummy(all_string_predictors()) %>%
+  #  step_dummy(all_factor_predictors())
+  #
+  #dataset <- MINIMAL_recipe %>% prep() %>% bake(dataset)                        #dit misschien trainen?
 
   set.seed(111)
   # create 5x2 folds
@@ -180,83 +180,106 @@ for(dataset in datasets) {
     train_bake <- LINEAR_recipe %>% prep(train) %>% bake(train)
     test_bake <- LINEAR_recipe %>% prep(train) %>% bake(test)
     train_bake_x <- train_bake %>% dplyr::select(-label)
+    GAM_recipe <- recipe(label~., data = train) %>%
+      step_impute_mean(all_numeric_predictors()) %>%
+      step_impute_mode(all_string_predictors()) %>%
+      step_impute_mode(all_factor_predictors()) %>%
+      #step_hai_winsorized_truncate(all_numeric_predictors(), fraction = 0.025) %>%
+      #step_rm(!contains("winsorized") & all_numeric_predictors()) %>%
+      step_dummy(all_string_predictors()) %>%
+      step_dummy(all_factor_predictors()) %>%
+      step_zv(all_predictors()) %>%
+      step_normalize(all_numeric_predictors())
     
-    smooth_vars = colnames(train_bake_x)[get_splineworthy_columns(train_bake_x)]
+    train_processed <- GAM_recipe%>%prep()%>%bake(train)
+
+    smooth_vars = colnames(train_processed%>%dplyr::select(-label))[get_splineworthy_columns(train_processed)]
     formula <- as.formula(
       stringr::str_sub(paste("label ~", 
-                             paste(ifelse(names(train_bake_x) %in% smooth_vars, "s(", ""),
-                                   names(train_bake_x),
-                                   ifelse(names(train_bake_x) %in% smooth_vars, ")",""),
+                             paste(ifelse(names(train_processed%>%dplyr::select(-label)) %in% smooth_vars, "s(", ""),
+                                   names(train_processed%>%dplyr::select(-label)),
+                                   ifelse(names(train_processed%>%dplyr::select(-label)) %in% smooth_vars, ")",""),
                                    collapse = " + ")
       ), 0, -1)
     )
     
-    GAM_model <- gam(formula, family = "binomial", data = train_bake)
-    GAM_preds <- data.frame(X1 = as.vector(predict(GAM_model, test_bake, type = 'response')))
-    GAM_preds$label <- test_bake$label
-    #AUC
-    g <- roc(label ~ X1, data = GAM_preds, direction = "<")
-    AUC <- g$auc
-    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "GAM", AUC)
-    #Brier
-    brier <- brier_class_vec(GAM_preds$label, GAM_preds$X1)
+    GAM_model <- 
+      parsnip::gen_additive_mod() %>%
+        set_mode("classification") %>%
+        set_engine("mgcv")
+    
+    GAM_wf <- workflow() %>%
+      add_recipe(GAM_recipe) %>%
+      add_model(GAM_model, formula = formula)
+    
+    final_GAM_fit <- GAM_wf %>% last_fit(folds$splits[[i]], metrics = metrics)
+    
+    auc <- final_GAM_fit %>%
+      collect_metrics() %>%
+      filter(.metric == "roc_auc") %>%
+      pull(.estimate)
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "GAM", auc)
+    
+    brier <- final_GAM_fit %>%
+      collect_metrics() %>%
+      filter(.metric == "brier_class") %>%
+      pull(.estimate)
     Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "GAM", brier)
-    #PG
-    pg <- partialGini(GAM_preds$X1, GAM_preds$label)
+    
+    pg <- final_GAM_fit %>%
+      collect_pg()
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "GAM", pg)
-
+    
+    
     
     #####
     # LDA #needs CFS step_corr tidy
-#    #####
-#    print("LDA")
-#  #step_corr doesnt work?
-#    nr_features_to_eliminate <- (sum(abs(cor(train_bake_x))>0.75)-ncol(train_bake_x))/2
-#    features_ranked <- attrEval(label~., train_bake, "MDL")
-#    selected_features <- names(features_ranked[-((ncol(train_bake_x)-nr_features_to_eliminate):ncol(train_bake_x))])
-#    corr_recipe <- recipe(label~., train_bake) %>%
-#      step_corr(threshold = 0.1) %>%
-#      prep()
-#    train_bake_selected <- corr_recipe %>% bake(train_bake)
-#    test_bake_selected <- corr_recipe %>% bake(test_bake)
-#    %>% dplyr::select(all_of(selected_features), label)
-#    train_bake_x_selected <- train_bake_x %>% dplyr::select(all_of(selected_features))
-#    
-#    FS <- cfs(label ~., data = datasets[[4]])
-#    
-#    LDA_model <- lda(label~., train_bake)
-#    LDA_preds <- data.frame(predict(LDA_model, test_bake, type = 'prob')$posterior)
-#    LDA_preds$label <- test_bake$label
-#    #AUC
-#    g <- roc(label ~ X1, data = LDA_preds, direction = "<")
-#    AUC <- g$auc
-#    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", AUC)
-#    print(AUC)
-#    
-#    brier <- brier_class_vec(LDA_preds$label, LDA_preds$X1)
-#    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", brier)
-#    
-#    
-#    #####
-#    # QDA #needs CFS
-#    #####
-#    print("QDA")
+    #####
+    print("LDA")
+  #step_corr doesnt work?
+    corr_recipe <- recipe(label~., train) %>%
+      step_corr(all_numeric_predictors(), threshold = 0.8) %>%
+      prep()
+    train_bake_selected <- corr_recipe %>% bake(train)
+    test_bake_selected <- corr_recipe %>% bake(test)
+
+    LDA_model <- lda(label~., train_bake_selected)
+    LDA_preds <- data.frame(predict(LDA_model, test_bake_selected, type = 'prob')$posterior)
+    LDA_preds$label <- test_bake_selected$label
+    #AUC
+    g <- roc(label ~ X1, data = LDA_preds, direction = "<")
+    AUC <- g$auc
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", AUC)
+    print(AUC)
     
-#    QDA_model <- train(data.frame(dplyr::select(train_bake,-label)), train_bake$label, method="stepLDA", trControl=trainControl(method="cv", number = 2, classProbs = TRUE, summaryFunction = BigSummary), metric = "partialGini",
-#                       #tuneGrid = expand.grid(maxvar = (floor(3*ncol(train)/4):ncol(train)), direction = "forward"),
-#                       allowParallel = TRUE)
+    brier <- brier_score(LDA_preds$X1, LDA_preds$label)
+    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", brier)
+    
+    partialGini(actuals = LDA_preds$label, preds = LDA_preds$X1)
+    
+    #####
+    # QDA #needs CFS
+    #####
+#    print("QDA")
+#    
+#    train_bake_selected_dummies <- XGB_recipe %>% prep(train_bake_selected) %>% bake(train_bake_selected)
+#    test_bake_selected_dummies <- XGB_recipe %>% prep(train_bake_selected) %>% bake(test_bake_selected)
+#    
+#    QDA_model <- qda(x = train_bake_selected%>%dplyr::select(-label), grouping = train_bake_selected$label)
+#    
 #    #works but suboptimal
 #    LDA_model <- lda(label~., data = train_bake)
-#    LDA_preds <- data.frame(predict(LDA_model, test_bake, type = 'prob')$posterior)
+#    QDA_preds <- data.frame(predict(object = QDA_model, newdata = test_bake_selected%>%dplyr::select(-label) %>%
+#  mutate_if(is.character, as.numeric), type = 'prob')$posterior)
 #    LDA_preds$label <- test_bake$label
 #    #AUC
 #    g <- roc(label ~ X1, data = LDA_preds, direction = "<")
 #    AUC <- g$auc
 #    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", AUC)
 #    print(AUC)
-    
-    
-    
+   
+   
+   
     
     #####
     # CTREE
@@ -277,7 +300,7 @@ for(dataset in datasets) {
     #Brier
     
     CTREE_model_Brier <- train(TREE_recipe, data = train, method = "ctree",
-                               tuneGrid = expand.grid(mincriterion = (CTREE_model$results%>%slice_max(Brier)%>%select(mincriterion))[[1]])) 
+                               tuneGrid = expand.grid(mincriterion = (CTREE_model$results%>%slice_max(Brier)%>%dplyr::select(mincriterion))[[1]])) 
     CTREE_preds <- predict(CTREE_model_Brier, test, type = 'prob')
     CTREE_preds$label <- test$label
     
@@ -288,7 +311,7 @@ for(dataset in datasets) {
     #PG
     
     CTREE_model_PG <- train(TREE_recipe, data = train, method = "ctree",
-                               tuneGrid = expand.grid(mincriterion = (CTREE_model$results%>%slice_max(partialGini)%>%select(mincriterion))[[1]]))
+                               tuneGrid = expand.grid(mincriterion = (CTREE_model$results%>%slice_max(partialGini)%>%dplyr::select(mincriterion))[[1]]))
     CTREE_preds <- predict(CTREE_model_PG, test, type = 'prob')
     CTREE_preds$label <- test$label
     
@@ -604,8 +627,8 @@ for(dataset in datasets) {
     RE_model_Brier <- train(XGB_recipe, data = train, method = "pre",
                             ntrees = 500, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
                             tuneGrid = getModelInfo("pre")[[1]]$grid( 
-                              maxdepth = (RE_model$results%>%slice_max(Brier)%>%select(maxdepth))[[1]],
-                              learnrate = (RE_model$results%>%slice_max(Brier)%>%select(learnrate))[[1]],
+                              maxdepth = (RE_model$results%>%slice_max(Brier)%>%dplyr::select(maxdepth))[[1]],
+                              learnrate = (RE_model$results%>%slice_max(Brier)%>%dplyr::select(learnrate))[[1]],
                               penalty.par.val = c("lambda.1se"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
                               sampfrac = 1,
                               use.grad = TRUE), ad.alpha = 0, singleconditions = TRUE,
@@ -623,8 +646,8 @@ for(dataset in datasets) {
     RE_model_PG <- train(XGB_recipe, data = train, method = "pre",
                             ntrees = 500, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
                             tuneGrid = getModelInfo("pre")[[1]]$grid( 
-                              maxdepth = (RE_model$results%>%slice_max(partialGini)%>%select(maxdepth))[[1]],
-                              learnrate = (RE_model$results%>%slice_max(partialGini)%>%select(learnrate))[[1]],
+                              maxdepth = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(maxdepth))[[1]],
+                              learnrate = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(learnrate))[[1]],
                               penalty.par.val = c("lambda.1se"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
                               sampfrac = 1,
                               use.grad = TRUE), ad.alpha = 0, singleconditions = TRUE,
@@ -1039,82 +1062,82 @@ for(dataset in datasets) {
     
     #DEFINITIVE ADALASSO?
     # initial ridge coef
-    set.seed(innerseed)
-    ridge <- train(label ~., data = SRE_train_baked, #ERROR
-                       method = "glmnet",
-                       tuneGrid = expand.grid(alpha = 0, lambda = seq(0.001, 1, length = 100)),
-                       metric = "AUCROC",
-                       trControl = ctrl)
-    lambda_auc <- ridge$results$lambda[which.max(ridge$results$AUCROC)]
-    lambda_brier <- ridge$results$lambda[which.min(ridge$results$Brier)]
-    lambda_pg <- ridge$results$lambda[which.max(ridge$results$partialGini)]
-    
-    set.seed(innerseed)
-    ridge_auc <- train(label ~., data = SRE_train_baked, 
-                       method = "glmnet",
-                       tuneGrid = expand.grid(alpha = 0, lambda = lambda_auc),
-                       trControl = trainControl(allowParallel = TRUE))    
-    set.seed(innerseed)
-    ridge_brier <- train(label ~., data = SRE_train_baked,
-                       method = "glmnet",
-                       tuneGrid = expand.grid(alpha = 0, lambda = lambda_brier),
-                       trControl = trainControl(allowParallel = TRUE))    
-    set.seed(innerseed)
-    ridge_pg <- train(label ~., data = SRE_train_baked, 
-                       method = "glmnet",
-                       tuneGrid = expand.grid(alpha = 0, lambda = lambda_pg),
-                       trControl = trainControl(allowParallel = TRUE))    
-    
-    coef_ridge_auc <- coef(ridge_auc$finalModel, s=lambda_auc)
-    coef_ridge_brier <- coef(ridge_brier$finalModel, s=lambda_brier)
-    coef_ridge_pg <- coef(ridge_pg$finalModel, s=lambda_pg)
-    
-    #final lasso
-    set.seed(innerseed)
-    adaLasso_auc <- train(label ~., data = SRE_train_baked, #ERROR
-                          method = "glmnet",
-                          tuneGrid = expand.grid(alpha = 1, lambda = seq(0.001, 1, length = 100)),
-                          penalty.factor = 1/abs(coef_ridge_auc)[-1],
-                          metric = "AUCROC",
-                          trControl = ctrl)
-    set.seed(innerseed)
-    adaLasso_brier <- train(label ~., data = SRE_train_baked, #ERROR
-                          method = "glmnet",
-                          tuneGrid = expand.grid(alpha = 1, lambda = seq(0.001, 1, length = 100)),
-                          penalty.factor = 1/abs(coef_ridge_brier)[-1],
-                          metric = "Brier",
-                          trControl = ctrl)
-    set.seed(innerseed)
-    adaLasso_pg <- train(label ~., data = SRE_train_baked, #ERROR
-                          method = "glmnet",
-                          tuneGrid = expand.grid(alpha = 1, lambda = seq(0.001, 1, length = 100)),
-                          penalty.factor = 1/abs(coef_ridge_pg)[-1],
-                          metric = "partialGini",
-                          trControl = ctrl)
-    
-    
-    preds_SRE_auc <- data.frame(predict(adaLasso_auc, SRE_test_baked, s = "lambda.min", type = "prob"))
-    preds_SRE_auc$label <- SRE_test_baked$label
-    #colnames(preds_SRE_auc) <- c("X1", "label")
-    
-    preds_SRE_brier <- data.frame(predict(adaLasso_brier, SRE_test_baked, s = "lambda.min", type = "prob"))
-    preds_SRE_brier$label <- SRE_test_baked$label
-    #colnames(preds_SRE_brier) <- c("X1", "label")
-    
-    preds_SRE_pg <- data.frame(predict(adaLasso_pg, SRE_test_baked, s = "lambda.min", type = "prob"))
-    preds_SRE_pg$label <- SRE_test_baked$label
-    #colnames(preds_SRE_pg) <- c("X1", "label")
-    
-    g <- roc(label ~ X1, data = preds_SRE_auc, direction = "<")
-    AUC <- g$auc
-    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", AUC)
-
-    brier <- brier_class_vec(preds_SRE_brier$label, preds_SRE_brier$X1)
-    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", brier)
-    
-    pg <- partialGini(preds_SRE_pg$X1, preds_SRE_pg$label)
-    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
-
+#    set.seed(innerseed)
+#    ridge <- train(label ~., data = SRE_train_baked, #ERROR
+#                       method = "glmnet",
+#                       tuneGrid = expand.grid(alpha = 0, lambda = seq(0.001, 1, length = 100)),
+#                       metric = "AUCROC",
+#                       trControl = ctrl)
+#    lambda_auc <- ridge$results$lambda[which.max(ridge$results$AUCROC)]
+#    lambda_brier <- ridge$results$lambda[which.min(ridge$results$Brier)]
+#    lambda_pg <- ridge$results$lambda[which.max(ridge$results$partialGini)]
+#    
+#    set.seed(innerseed)
+#    ridge_auc <- train(label ~., data = SRE_train_baked, 
+#                       method = "glmnet",
+#                       tuneGrid = expand.grid(alpha = 0, lambda = lambda_auc),
+#                       trControl = trainControl(allowParallel = TRUE))    
+#    set.seed(innerseed)
+#    ridge_brier <- train(label ~., data = SRE_train_baked,
+#                       method = "glmnet",
+#                       tuneGrid = expand.grid(alpha = 0, lambda = lambda_brier),
+#                       trControl = trainControl(allowParallel = TRUE))    
+#    set.seed(innerseed)
+#    ridge_pg <- train(label ~., data = SRE_train_baked, 
+#                       method = "glmnet",
+#                       tuneGrid = expand.grid(alpha = 0, lambda = lambda_pg),
+#                       trControl = trainControl(allowParallel = TRUE))    
+#    
+#    coef_ridge_auc <- coef(ridge_auc$finalModel, s=lambda_auc)
+#    coef_ridge_brier <- coef(ridge_brier$finalModel, s=lambda_brier)
+#    coef_ridge_pg <- coef(ridge_pg$finalModel, s=lambda_pg)
+#    
+#    #final lasso
+#    set.seed(innerseed)
+#    adaLasso_auc <- train(label ~., data = SRE_train_baked, #ERROR
+#                          method = "glmnet",
+#                          tuneGrid = expand.grid(alpha = 1, lambda = seq(0.001, 1, length = 100)),
+#                          penalty.factor = 1/abs(coef_ridge_auc)[-1],
+#                          metric = "AUCROC",
+#                          trControl = ctrl)
+#    set.seed(innerseed)
+#    adaLasso_brier <- train(label ~., data = SRE_train_baked, #ERROR
+#                          method = "glmnet",
+#                          tuneGrid = expand.grid(alpha = 1, lambda = seq(0.001, 1, length = 100)),
+#                          penalty.factor = 1/abs(coef_ridge_brier)[-1],
+#                          metric = "Brier",
+#                          trControl = ctrl)
+#    set.seed(innerseed)
+#    adaLasso_pg <- train(label ~., data = SRE_train_baked, #ERROR
+#                          method = "glmnet",
+#                          tuneGrid = expand.grid(alpha = 1, lambda = seq(0.001, 1, length = 100)),
+#                          penalty.factor = 1/abs(coef_ridge_pg)[-1],
+#                          metric = "partialGini",
+#                          trControl = ctrl)
+#    
+#    
+#    preds_SRE_auc <- data.frame(predict(adaLasso_auc, SRE_test_baked, s = "lambda.min", type = "prob"))
+#    preds_SRE_auc$label <- SRE_test_baked$label
+#    #colnames(preds_SRE_auc) <- c("X1", "label")
+#    
+#    preds_SRE_brier <- data.frame(predict(adaLasso_brier, SRE_test_baked, s = "lambda.min", type = "prob"))
+#    preds_SRE_brier$label <- SRE_test_baked$label
+#    #colnames(preds_SRE_brier) <- c("X1", "label")
+#    
+#    preds_SRE_pg <- data.frame(predict(adaLasso_pg, SRE_test_baked, s = "lambda.min", type = "prob"))
+#    preds_SRE_pg$label <- SRE_test_baked$label
+#    #colnames(preds_SRE_pg) <- c("X1", "label")
+#    
+#    g <- roc(label ~ X1, data = preds_SRE_auc, direction = "<")
+#    AUC <- g$auc
+#    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", AUC)
+#
+#    brier <- brier_class_vec(preds_SRE_brier$label, preds_SRE_brier$X1)
+#    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", brier)
+#    
+#    pg <- partialGini(preds_SRE_pg$X1, preds_SRE_pg$label)
+#    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
+#
   }
   write.csv(AUC_results, file = paste("./results/",dataset_vector[4],"_AUC.csv", sep = ""))
   write.csv(Brier_results, file = paste("./results/",dataset_vector[4],"_BRIER.csv", sep = ""))
