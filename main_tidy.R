@@ -522,7 +522,7 @@ for(dataset in datasets) {
     
     #Brier
     RE_model_Brier <- train(XGB_recipe, data = train, method = "pre",
-                            ntrees = min(500, nrow(train)/2), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+                            ntrees = min(500, round(nrow(train)/2)), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
                             tuneGrid = getModelInfo("pre")[[1]]$grid( 
                               maxdepth = (RE_model$results%>%slice_max(Brier)%>%dplyr::select(maxdepth))[[1]],
                               learnrate = (RE_model$results%>%slice_max(Brier)%>%dplyr::select(learnrate))[[1]],
@@ -541,7 +541,7 @@ for(dataset in datasets) {
     
     #PG
     RE_model_PG <- train(XGB_recipe, data = train, method = "pre",
-                            ntrees = min(500, nrow(train)/2), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+                            ntrees = min(500, round(nrow(train)/2)), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
                             tuneGrid = getModelInfo("pre")[[1]]$grid( 
                               maxdepth = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(maxdepth))[[1]],
                               learnrate = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(learnrate))[[1]],
