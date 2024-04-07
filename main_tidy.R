@@ -259,7 +259,9 @@ for(dataset in datasets) {
     brier <- brier_score(preds = LDA_preds$X1, truth = LDA_preds$label)
     Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", brier)
     
-    partialGini(actuals = LDA_preds$label, preds = LDA_preds$X1)
+    pg <- partialGini(actuals = LDA_preds$label, preds = LDA_preds$X1)    
+    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", pg)
+
     
     #####
     # QDA #needs CFS
