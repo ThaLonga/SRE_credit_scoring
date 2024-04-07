@@ -20,7 +20,7 @@ registerDoParallel(cl)
 metric = "AUCROC"
 nr_repeats = 3
 outerfolds = 2
-innerfolds = 3
+innerfolds = 5
 dataset_vector = c("GC", "AC", "GMSC", "TH02")
 
 ctrl <- trainControl(method = "cv", number = innerfolds, classProbs = TRUE, summaryFunction = BigSummary, search = "grid", allowParallel = TRUE)
@@ -240,6 +240,9 @@ for(dataset in datasets) {
     print("LDA")
   #step_corr doesnt work?
     corr_recipe <- recipe(label~., train) %>%
+      step_impute_mean(all_numeric_predictors()) %>%
+      step_impute_mode(all_string_predictors()) %>%
+      step_impute_mode(all_factor_predictors()) %>%
       step_corr(all_numeric_predictors(), threshold = 0.8) %>%
       prep()
     train_bake_selected <- corr_recipe %>% bake(train)
@@ -252,8 +255,7 @@ for(dataset in datasets) {
     g <- roc(label ~ X1, data = LDA_preds, direction = "<")
     AUC <- g$auc
     AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", AUC)
-    print(AUC)
-    
+
     brier <- brier_score(preds = LDA_preds$X1, truth = LDA_preds$label)
     Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", brier)
     
@@ -634,6 +636,15 @@ for(dataset in datasets) {
       fitted_smooths_test[, j] <- fitted_values_test 
     }
     
+    SRE_recipe <- recipe(label ~., data = train) %>%
+      #step_impute_mean(all_numeric_predictors()) %>%
+      #step_impute_mode(all_string_predictors()) %>%
+      #step_impute_mode(all_factor_predictors()) %>%
+      step_dummy(all_string_predictors()) %>%
+      step_dummy(all_factor_predictors()) %>%
+      step_zv()
+    
+    
     train_rule_baked <- XGB_recipe %>%
       prep(train) %>%
       bake(train)
@@ -807,17 +818,15 @@ for(dataset in datasets) {
       step_hai_winsorized_truncate(all_of(names(SRE_train)[winsorizable])&!contains("s("), fraction = 0.025) %>%
       step_rm(all_of(names(SRE_train)[winsorizable])&!contains("s(")) %>%
       step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
+      step_mutate(across(where(is.logical), as.integer)) %>%
       step_zv()
     
     SRE_train_baked <- SRE_recipe %>% prep() %>% bake(SRE_train)
     SRE_test_baked <- SRE_recipe %>% prep(SRE_train) %>% bake(SRE_test)
     
     
-    
-    
-    
-    
-    
+    set.seed(i)
+    inner_folds_SRE <- SRE_train %>% vfold_cv(v=5)
     
     #regular lasso
     SRE_model <- 
@@ -829,13 +838,13 @@ for(dataset in datasets) {
       set_engine("glmnet")
     
     SRE_wf <- workflow() %>%
-      add_formula(label~.) %>%
-      #add_recipe(LINEAR_recipe) %>%
+      #add_formula(label~.) %>%
+      add_recipe(SRE_recipe) %>%
       add_model(SRE_model)
     
     SRE_tuned <- tune::tune_grid(
       object = SRE_wf,
-      resamples = inner_folds,
+      resamples = inner_folds_SRE,
       grid = hyperparameters_SRE_tidy, 
       metrics = metrics,
       control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
