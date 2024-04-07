@@ -98,11 +98,26 @@ select_best_pg_LRR <- function(.data) {
 
 select_best_pg_SRE <- function(.data) {
   suppressMessages({.data %>%
-      collect_predictions(summarize = TRUE) %>%
-      group_by(penalty, .config) %>%
+      collect_predictions(summarize = FALSE) %>%
+      group_by(id, penalty, .config) %>%
       summarise(partial_gini = partialGini(.pred_X1, label)) %>%
+      group_by(penalty, .config) %>%
+      summarise(avg_pg = mean(partial_gini)) %>%
       ungroup() %>%
-      slice_max(partial_gini) %>%
+      slice_max(avg_pg) %>%
+      slice_head() %>%
+      dplyr::select(penalty, .config)})
+}
+
+select_SRE_by_penalty <- function(.data) {
+  suppressMessages({.data %>%
+      collect_predictions(summarize = FALSE) %>%
+      group_by(id, penalty, .config) %>%
+      summarise(partial_gini = partialGini(.pred_X1, label)) %>%
+      group_by(penalty, .config) %>%
+      summarise(avg_pg = mean(partial_gini)) %>%
+      ungroup() %>%
+      slice_max(avg_pg) %>%
       slice_head() %>%
       dplyr::select(penalty, .config)})
 }

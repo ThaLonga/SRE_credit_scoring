@@ -630,7 +630,7 @@ for(dataset in datasets) {
     colnames(fitted_smooths_test) <- smooth_terms
     for (j in seq_along(smooth_terms)) {
       current_smooth <- smooth_terms[j]
-      fitted_values_train <- predict(extract_fit_engine(final_GAM_fit), type = "terms")[, current_smooth]
+      fitted_values_train <- predict(extract_fit_engine(final_GAM_fit),train_bake, type = "terms")[, current_smooth]
       fitted_smooths_train[, j] <- fitted_values_train
       fitted_values_test <- predict(extract_fit_engine(final_GAM_fit), test_bake, type = "terms")[, current_smooth]
       fitted_smooths_test[, j] <- fitted_values_test 
@@ -641,8 +641,7 @@ for(dataset in datasets) {
       #step_impute_mode(all_string_predictors()) %>%
       #step_impute_mode(all_factor_predictors()) %>%
       step_dummy(all_string_predictors()) %>%
-      step_dummy(all_factor_predictors()) %>%
-      step_zv()
+      step_dummy(all_factor_predictors())
     
     
     train_rule_baked <- XGB_recipe %>%
@@ -658,172 +657,25 @@ for(dataset in datasets) {
     SRE_test <- cbind(SRE_test_rules, fitted_smooths_test)
     
 
-    
-    #adalasso with initial ridge weights
-    #INITIAL RIDGE
-#
-#    set.seed(innerseed)
-#    inner_folds_SRE <- SRE_train %>% vfold_cv(v=5)
-#    ridge1 <- 
-#      parsnip::logistic_reg(
-#        mode = "classification",
-#        mixture = tune(),
-#        penalty = tune()
-#        ) %>%
-#      set_engine("glmnet")
-#    
-#    LRR_wf <- workflow() %>%
-#      add_formula(formula = label ~.) %>%
-#      add_model(ridge1)
-#    
-#    LRR_tuned <- tune::tune_grid(
-#      object = LRR_wf,
-#      resamples = inner_folds_SRE,
-#      grid = expand.grid(list(mixture = 0, penalty = seq(0.001,5,length=100))),
-#      metrics = metrics,
-#      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
-#    )
-#    
-#    best_model_auc <- LRR_tuned %>% select_best("roc_auc")
-#    final_LRR_wf_auc <- LRR_wf %>% finalize_workflow(best_model_auc) %>% fit(SRE_train)
-#    auc_ridge_coef <- final_LRR_wf_auc%>%extract_fit_parsnip()%>%tidy()%>%select(estimate)
-#
-#    best_model_brier <- LRR_tuned %>% select_best("brier_class")
-#    final_LRR_wf_brier <- LRR_wf %>% finalize_workflow(best_model_brier) %>% fit(SRE_train)
-#    brier_ridge_coef <- final_LRR_wf_brier%>%extract_fit_parsnip()%>%tidy()%>%select(estimate)
-#    
-#    best_model_pg <- LRR_tuned %>% select_best_pg()
-#    final_LRR_wf_pg <- LRR_wf %>% finalize_workflow(best_model_pg) %>% fit(SRE_train)
-#    pg_ridge_coef <- final_LRR_wf_pg%>%extract_fit_parsnip()%>%tidy()%>%select(estimate)
-#    
-#    ## Perform adaptive LASSO
-#
-#    auc_penalties <- c(1/abs(auc_ridge_coef$estimate[-1]))
-#    
-#    adaLasso_auc <- 
-#      parsnip::logistic_reg(
-#        mode = "classification",
-#        mixture = tune(),
-#        penalty = tune()
-#      ) %>%
-#      set_engine("glmnet", penalty.factor = auc_penalties)
-#    
-#    adaLasso_wf_auc <- workflow() %>%
-#      add_formula(formula = label ~.) %>%
-#      add_model(adaLasso_auc)
-#    
-#    adaLasso_brier <- 
-#      parsnip::logistic_reg(
-#        mode = "classification",
-#        mixture = tune(),
-#        penalty = tune()
-#      ) %>%
-#      set_engine("glmnet", penalty.factor = 1/abs(brier_ridge_coef$estimate[-1]))
-#    
-#    adaLasso_wf_brier <- workflow() %>%
-#      add_formula(formula = label ~.) %>%
-#      add_model(adaLasso_brier)
-#    
-#    adaLasso_pg <- 
-#      parsnip::logistic_reg(
-#        mode = "classification",
-#        mixture = tune(),
-#        penalty = tune()
-#      ) %>%
-#      set_engine("glmnet"#, penalty.factor = 1/abs(pg_ridge_coef$estimate[-1]))
-#      )
-#    
-#    adaLasso_wf_pg <- workflow() %>%
-#      add_formula(formula = label ~.) %>%
-#      add_model(adaLasso_pg)
-#    
-#    adaLasso_tuned_auc <- tune::tune_grid(
-#      object = adaLasso_wf_auc,
-#      resamples = inner_folds_SRE,
-#      grid = expand.grid(list(mixture = 1, penalty = seq(0.001,0.1,length=100))), 
-#      metrics = metrics,
-#      control = tune::control_grid(verbose = TRUE)
-#    )
-#    
-#    adaLasso_tuned_brier <- tune::tune_grid(
-#      object = adaLasso_wf_brier,
-#      resamples = inner_folds_SRE,
-#      grid = expand.grid(list(mixture = 1, penalty = seq(0.001,5,length=100))), 
-#      metrics = metrics,
-#      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
-#    )
-#    
-#    adaLasso_tuned_pg <- tune::tune_grid(
-#      object = adaLasso_wf_pg,
-#      resamples = inner_folds_SRE,
-#      grid = expand.grid(list(mixture = 1, penalty = seq(0.001,0.1,length=100))), 
-#      metrics = metrics,
-#      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
-#    )
-#    
-#    #AUC
-#    best_SRE_auc <- adaLasso_tuned_auc %>% select_best("roc_auc")
-#    final_SRE_wf_auc <- adaLasso_wf_auc %>% finalize_workflow(best_SRE_auc)
-#    SRE_auc_preds <- final_SRE_wf_auc %>% fit(SRE_train) %>% predict(SRE_test, type = "prob")
-#    
-#    SRE_auc_preds$label <- SRE_test$label
-#    #AUC
-#    g <- roc(label ~ .pred_X1, data = SRE_auc_preds, direction = "<")
-#    AUC <- g$auc
-#    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", AUC)
-#
-#    #Brier
-#    best_SRE_brier <- adaLasso_tuned_brier %>% select_best("brier_class")
-#    final_SRE_wf_brier <- adaLasso_wf_brier %>% finalize_workflow(best_SRE_brier)
-#    SRE_brier_preds <- final_SRE_wf_brier%>% fit(SRE_train) %>% predict(SRE_test, type = "prob")
-#    
-#    SRE_brier_preds$label <- SRE_test$label
-#    brier <- brier_class_vec(SRE_brier_preds$label, SRE_brier_preds$.pred_X1)
-#    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", brier)
-#    
-#    #PG
-#    best_SRE_pg <- adaLasso_tuned_pg %>% select_best_pg()
-#    final_SRE_wf_pg <- adaLasso_wf_pg %>% finalize_workflow(best_SRE_pg)
-#    SRE_pg_preds <- final_SRE_wf_pg %>% fit(SRE_train) %>% predict(SRE_test, type = "prob")
-#    
-#    SRE_pg_preds$label <- SRE_test$label
-#    pg <- partialGini(SRE_pg_preds$.pred_X1, SRE_pg_preds$label)
-#    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
+    winsorizable <- get_splineworthy_columns(SRE_train)
  
     
+    indices <- list(
+      list(analysis = 1:nrow(SRE_train), assessment = (nrow(SRE_train)+1):(nrow(SRE_train)+nrow(SRE_test)))
+    )
     
-    ###################
+    splits <- lapply(indices, make_splits, data = rbind(SRE_train, SRE_test))
     
+    SRE_split <- manual_rset(splits, c("Split SRE"))
     
-    
-       
-    #without parsnip
-    #winsorization and scaling
-    SRE_train_scaled_winsorized <- SRE_train
-    SRE_test_scaled_winsorized <- SRE_test
-    
-    winsorizable <- get_splineworthy_columns(SRE_train)
-    
-    #SRE_train_scaled_winsorized[lapply(SRE_train, n_distinct)>2] <- lapply((SRE_train[lapply(SRE_train, n_distinct)>2]), function(x) 0.4*(Winsorize(x, probs = c(0.025,0.975)))/sd(x))
-    #for (col in names(SRE_train)[get_splineworthy_columns(SRE_train)]) {
-    #  # Calculate winsorization limits for the current column in SRE_train
-    #  winsor_limits <-  Winsorize(SRE_train[[col]], probs = c(0.025, 0.975))
-    #  
-    #  # Apply winsorization to the current column in both training and testing sets
-    #  SRE_train_scaled_winsorized[[col]] <- Winsorize(SRE_train[[col]], minval = min(winsor_limits), maxval = max(winsor_limits))
-    #  SRE_train_scaled_winsorized[[col]] <- 0.4*SRE_train_scaled_winsorized[[col]] / sd(SRE_train_scaled_winsorized[[col]])
-    #  SRE_test_scaled_winsorized[[col]] <- 0.4*Winsorize(SRE_test[[col]], minval = min(winsor_limits), maxval = max(winsor_limits)) / sd(SRE_train_scaled_winsorized[[col]])
-    #}
-    SRE_recipe <- recipe(label~., data = SRE_train) %>%
-      step_hai_winsorized_truncate(all_of(names(SRE_train)[winsorizable])&!contains("s("), fraction = 0.025) %>%
-      step_rm(all_of(names(SRE_train)[winsorizable])&!contains("s(")) %>%
+    normalizable <- colnames(training(SRE_split$splits[[1]])[unlist(lapply(training(SRE_split$splits[[1]]), function(x) n_distinct(x)>2))])
+    SRE_recipe <- recipe(label~., data = training(SRE_split$splits[[1]])) %>%
+      step_hai_winsorized_truncate(all_of(names(!!training(SRE_split$splits[[1]]))[!!winsorizable]), fraction = 0.025) %>%
+      step_rm(all_of(names(!!training(SRE_split$splits[[1]]))[!!winsorizable])) %>%
       step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
       step_mutate(across(where(is.logical), as.integer)) %>%
+      step_normalize(all_of(setdiff(!!normalizable, colnames(!!training(SRE_split$splits[[1]])[!!winsorizable])))) %>%
       step_zv()
-    
-    SRE_train_baked <- SRE_recipe %>% prep() %>% bake(SRE_train)
-    SRE_test_baked <- SRE_recipe %>% prep(SRE_train) %>% bake(SRE_test)
-    
     
     set.seed(i)
     inner_folds_SRE <- SRE_train %>% vfold_cv(v=5)
@@ -850,17 +702,110 @@ for(dataset in datasets) {
       control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
     )
     
-    best_model_auc <- SRE_tuned %>% select_best("roc_auc")
-    final_SRE_wf_auc <- SRE_wf %>% finalize_workflow(best_model_auc)
-    final_SRE_fit_auc <- final_SRE_wf_auc %>% last_fit(folds$splits[[i]], metrics = metrics)
+
+    SRE_metrics <- SRE_tuned %>% 
+      collect_metrics()
     
-    best_model_brier <- SRE_tuned %>% select_best("brier_class")
-    final_SRE_wf_brier <- SRE_wf %>% finalize_workflow(best_model_brier)
-    final_SRE_fit_brier <- final_SRE_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
+    lambda_min_auc <- SRE_metrics %>%
+      filter(.metric=="roc_auc") %>%
+      slice_max(mean) %>%
+      dplyr::select(penalty) %>%
+      pull()
     
-    best_model_pg <- SRE_tuned %>% select_best_pg_SRE()
-    final_SRE_wf_pg <- SRE_wf %>% finalize_workflow(best_model_pg)
-    final_SRE_fit_pg <- final_SRE_wf_pg %>% last_fit(folds$splits[[i]], metrics = metrics)
+    lambda_min_brier <- SRE_metrics %>%
+      filter(.metric=="brier_class") %>%
+      slice_min(mean) %>%
+      dplyr::select(penalty) %>%
+      pull()
+    
+    lambda_min_pg <- suppressMessages(SRE_tuned %>%
+      collect_predictions(summarize = FALSE) %>%
+      group_by(id, penalty, .config) %>%
+      summarise(partial_gini = partialGini(.pred_X1, label)) %>%
+      group_by(penalty, .config) %>%
+      summarise(avg_pg = mean(partial_gini)) %>%
+      ungroup() %>%
+      slice_max(avg_pg) %>%
+      slice_head() %>%
+      dplyr::select(penalty) %>%                            
+      pull())
+    
+
+    lambda_sd_auc <- sd(unlist(lapply(SRE_tuned$.metrics, function(tbl) {
+      # Filter to keep rows where penalty is "0.0111"
+      # Note: Ensure the penalty column is treated as character if it's not numeric
+      tbl %>% filter(.metric=="roc_auc") %>%
+        slice_max(.estimate) %>%
+        dplyr::select(penalty)    
+      })))
+    
+    lambda_sd_brier <- sd(unlist(lapply(SRE_tuned$.metrics, function(tbl) {
+      # Filter to keep rows where penalty is "0.0111"
+      # Note: Ensure the penalty column is treated as character if it's not numeric
+      tbl %>% filter(.metric=="brier_class") %>%
+        slice_min(.estimate) %>%
+        dplyr::select(penalty)    
+    })))
+    
+    lambda_sd_pg <- suppressMessages(SRE_tuned %>%
+      collect_predictions(summarize = FALSE) %>%
+      group_by(id, penalty, .config) %>%
+      summarise(partial_gini = partialGini(.pred_X1, label)) %>%
+      group_by(id) %>%
+      slice_max(partial_gini) %>%
+      ungroup() %>%
+      summarise(sd(penalty)) %>%
+      pull())
+    
+    lambda_1se_auc <- lambda_min_auc + lambda_sd_auc
+    lambda_1se_brier <- lambda_min_brier + lambda_sd_brier
+    lambda_1se_pg <- lambda_min_pg + lambda_sd_pg
+    
+  
+    SRE_model_auc <- 
+      parsnip::logistic_reg(
+        mode = "classification",
+        mixture = 1,
+        penalty = lambda_1se_auc
+      ) %>%
+      set_engine("glmnet")
+    
+    SRE_wf_auc <- workflow() %>%
+      #add_formula(label~.) %>%
+      add_recipe(SRE_recipe) %>%
+      add_model(SRE_model_auc)
+    
+    SRE_model_brier <- 
+      parsnip::logistic_reg(
+        mode = "classification",
+        mixture = 1,
+        penalty = lambda_1se_brier
+      ) %>%
+      set_engine("glmnet")
+    
+    SRE_wf_brier <- workflow() %>%
+      #add_formula(label~.) %>%
+      add_recipe(SRE_recipe) %>%
+      add_model(SRE_model_brier)    
+    
+    SRE_model_pg <- 
+      parsnip::logistic_reg(
+        mode = "classification",
+        mixture = 1,
+        penalty = lambda_1se_pg
+      ) %>%
+      set_engine("glmnet")
+    
+    SRE_wf_pg <- workflow() %>%
+      #add_formula(label~.) %>%
+      add_recipe(SRE_recipe) %>%
+      add_model(SRE_model_pg)    
+
+    final_SRE_fit_auc <- SRE_wf_auc %>% last_fit(SRE_split$splits[[1]], metrics = metrics)
+    
+    final_SRE_fit_brier <- SRE_wf_brier %>% last_fit(SRE_split$splits[[1]], metrics = metrics)
+    
+    final_SRE_fit_pg <- SRE_wf_pg %>% last_fit(SRE_split$splits[[1]], metrics = metrics)
     
     
     
@@ -880,87 +825,7 @@ for(dataset in datasets) {
       collect_pg()
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
     
-    
-    
-    
-    #DEFINITIVE ADALASSO?
-    # initial ridge coef
-#    set.seed(innerseed)
-#    ridge <- train(label ~., data = SRE_train_baked, #ERROR
-#                       method = "glmnet",
-#                       tuneGrid = expand.grid(alpha = 0, lambda = seq(0.001, 1, length = 100)),
-#                       metric = "AUCROC",
-#                       trControl = ctrl)
-#    lambda_auc <- ridge$results$lambda[which.max(ridge$results$AUCROC)]
-#    lambda_brier <- ridge$results$lambda[which.min(ridge$results$Brier)]
-#    lambda_pg <- ridge$results$lambda[which.max(ridge$results$partialGini)]
-#    
-#    set.seed(innerseed)
-#    ridge_auc <- train(label ~., data = SRE_train_baked, 
-#                       method = "glmnet",
-#                       tuneGrid = expand.grid(alpha = 0, lambda = lambda_auc),
-#                       trControl = trainControl(allowParallel = TRUE))    
-#    set.seed(innerseed)
-#    ridge_brier <- train(label ~., data = SRE_train_baked,
-#                       method = "glmnet",
-#                       tuneGrid = expand.grid(alpha = 0, lambda = lambda_brier),
-#                       trControl = trainControl(allowParallel = TRUE))    
-#    set.seed(innerseed)
-#    ridge_pg <- train(label ~., data = SRE_train_baked, 
-#                       method = "glmnet",
-#                       tuneGrid = expand.grid(alpha = 0, lambda = lambda_pg),
-#                       trControl = trainControl(allowParallel = TRUE))    
-#    
-#    coef_ridge_auc <- coef(ridge_auc$finalModel, s=lambda_auc)
-#    coef_ridge_brier <- coef(ridge_brier$finalModel, s=lambda_brier)
-#    coef_ridge_pg <- coef(ridge_pg$finalModel, s=lambda_pg)
-#    
-#    #final lasso
-#    set.seed(innerseed)
-#    adaLasso_auc <- train(label ~., data = SRE_train_baked, #ERROR
-#                          method = "glmnet",
-#                          tuneGrid = expand.grid(alpha = 1, lambda = seq(0.001, 1, length = 100)),
-#                          penalty.factor = 1/abs(coef_ridge_auc)[-1],
-#                          metric = "AUCROC",
-#                          trControl = ctrl)
-#    set.seed(innerseed)
-#    adaLasso_brier <- train(label ~., data = SRE_train_baked, #ERROR
-#                          method = "glmnet",
-#                          tuneGrid = expand.grid(alpha = 1, lambda = seq(0.001, 1, length = 100)),
-#                          penalty.factor = 1/abs(coef_ridge_brier)[-1],
-#                          metric = "Brier",
-#                          trControl = ctrl)
-#    set.seed(innerseed)
-#    adaLasso_pg <- train(label ~., data = SRE_train_baked, #ERROR
-#                          method = "glmnet",
-#                          tuneGrid = expand.grid(alpha = 1, lambda = seq(0.001, 1, length = 100)),
-#                          penalty.factor = 1/abs(coef_ridge_pg)[-1],
-#                          metric = "partialGini",
-#                          trControl = ctrl)
-#    
-#    
-#    preds_SRE_auc <- data.frame(predict(adaLasso_auc, SRE_test_baked, s = "lambda.min", type = "prob"))
-#    preds_SRE_auc$label <- SRE_test_baked$label
-#    #colnames(preds_SRE_auc) <- c("X1", "label")
-#    
-#    preds_SRE_brier <- data.frame(predict(adaLasso_brier, SRE_test_baked, s = "lambda.min", type = "prob"))
-#    preds_SRE_brier$label <- SRE_test_baked$label
-#    #colnames(preds_SRE_brier) <- c("X1", "label")
-#    
-#    preds_SRE_pg <- data.frame(predict(adaLasso_pg, SRE_test_baked, s = "lambda.min", type = "prob"))
-#    preds_SRE_pg$label <- SRE_test_baked$label
-#    #colnames(preds_SRE_pg) <- c("X1", "label")
-#    
-#    g <- roc(label ~ X1, data = preds_SRE_auc, direction = "<")
-#    AUC <- g$auc
-#    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", AUC)
-#
-#    brier <- brier_class_vec(preds_SRE_brier$label, preds_SRE_brier$X1)
-#    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", brier)
-#    
-#    pg <- partialGini(preds_SRE_pg$X1, preds_SRE_pg$label)
-#    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
-#
+  
   }
   write.csv(AUC_results, file = paste("./results/",dataset_vector[1],"_AUC.csv", sep = ""))
   write.csv(Brier_results, file = paste("./results/",dataset_vector[1],"_BRIER.csv", sep = ""))

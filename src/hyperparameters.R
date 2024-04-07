@@ -12,7 +12,7 @@ hyperparameters_LR_R_tidy <- expand.grid(list(
 ))
 
 hyperparameters_SRE_tidy <- expand.grid(list(
-  penalty = seq(0.001,1, length.out = 100)
+  penalty = seq(0.001,1, length.out = 1000)
 ))
 
 
@@ -65,7 +65,7 @@ hyperparameters_XGB_tidy <- crossing(
 #LightGBM eventueel
 
 preGrid <- getModelInfo("pre")[[1]]$grid( 
-  maxdepth = c(2,3,4),
+  maxdepth = c(2,3),
   learnrate = c(.01, .05, .1),
   penalty.par.val = c("lambda.1se"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
   sampfrac = 1,
