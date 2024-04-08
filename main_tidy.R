@@ -110,6 +110,17 @@ for(dataset in datasets) {
       step_zv(all_predictors()) %>%
       step_corr(all_numeric_predictors(), threshold = 0.8)
     
+    GAM_recipe <- recipe(label~., data = train) %>%
+      step_impute_mean(all_numeric_predictors()) %>%
+      step_impute_mode(all_string_predictors()) %>%
+      step_impute_mode(all_factor_predictors()) %>%
+      #step_hai_winsorized_truncate(all_numeric_predictors(), fraction = 0.025) %>%
+      #step_rm(!contains("winsorized") & all_numeric_predictors()) %>%
+      step_dummy(all_string_predictors()) %>%
+      step_dummy(all_factor_predictors()) %>%
+      step_zv(all_predictors()) %>%
+      step_normalize(all_numeric_predictors())
+    
     
     #Needed for RF hyperparameters
     train_bake <- XGB_recipe %>% prep(train) %>% bake(train)
@@ -185,17 +196,6 @@ for(dataset in datasets) {
     # GAM
     #####
     print("GAM")
-    
-    GAM_recipe <- recipe(label~., data = train) %>%
-      step_impute_mean(all_numeric_predictors()) %>%
-      step_impute_mode(all_string_predictors()) %>%
-      step_impute_mode(all_factor_predictors()) %>%
-      #step_hai_winsorized_truncate(all_numeric_predictors(), fraction = 0.025) %>%
-      #step_rm(!contains("winsorized") & all_numeric_predictors()) %>%
-      step_dummy(all_string_predictors()) %>%
-      step_dummy(all_factor_predictors()) %>%
-      step_zv(all_predictors()) %>%
-      step_normalize(all_numeric_predictors())
     
     train_processed <- GAM_recipe%>%prep()%>%bake(train)
 
@@ -486,7 +486,7 @@ for(dataset in datasets) {
       pull(.estimate)
     Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "LGBM", brier)
     
-    pg <- final_xgb_fit_pg %>%
+    pg <- final_lgbm_fit_pg %>%
       collect_pg()
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "LGBM", pg)
     
