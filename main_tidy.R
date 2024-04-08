@@ -20,10 +20,10 @@ registerDoParallel(cl)
 metric = "AUCROC"
 nr_repeats = 3
 outerfolds = 2
-innerfolds = 5
+nr_innerfolds = 5
 dataset_vector = c("GC", "AC", "GMSC", "TH02")
 
-ctrl <- trainControl(method = "cv", number = innerfolds, classProbs = TRUE, summaryFunction = BigSummary, search = "grid", allowParallel = TRUE)
+ctrl <- trainControl(method = "cv", number = nr_innerfolds, classProbs = TRUE, summaryFunction = BigSummary, search = "grid", allowParallel = TRUE)
 metrics = metric_set(roc_auc, brier_class)
 
 # create empty dataframe metric_results with columns: (dataset, repeat, fold, algorithm, metric)	
@@ -45,7 +45,7 @@ for(dataset in datasets) {
   
   # for GMSC only 3 repeats because large dataset
   if(dataset_counter==3) {nr_repeats <- 3} else {nr_repeats <- 5}
-  innerfolds = nr_repeats
+  nr_innerfolds = nr_repeats
   
   # dummies for categories present in train and test so no new levels error
   #MINIMAL_recipe <- recipe(label ~., data = dataset) %>%
@@ -78,7 +78,7 @@ for(dataset in datasets) {
       step_impute_mean(all_numeric_predictors()) %>%
       step_impute_mode(all_string_predictors()) %>%
       step_impute_mode(all_factor_predictors()) %>%
-      step_zv()
+      step_zv(all_predictors())
     
     # for tree-based that do require dummies
     XGB_recipe <- recipe(label ~., data = train) %>%
@@ -87,7 +87,7 @@ for(dataset in datasets) {
       step_impute_mode(all_factor_predictors()) %>%
       step_dummy(all_string_predictors()) %>%
       step_dummy(all_factor_predictors()) %>%
-      step_zv()
+      step_zv(all_predictors())
     
     winsorizable <- names(train)[get_splineworthy_columns(train)]
     
@@ -96,15 +96,19 @@ for(dataset in datasets) {
       step_impute_mean(all_numeric_predictors()) %>%
       step_impute_mode(all_string_predictors()) %>%
       step_impute_mode(all_factor_predictors()) %>%
+      step_zv(all_predictors()) %>%
       step_hai_winsorized_truncate(all_numeric_predictors(), fraction = 0.025) %>%
       step_rm(!contains("winsorized") & all_numeric_predictors()) %>%
       step_dummy(all_string_predictors()) %>%
       step_dummy(all_factor_predictors()) %>%
-      step_zv(all_predictors()) %>%
       step_normalize(all_numeric_predictors())
     
-    RULEFIT_recipe <- TREE_recipe
-    
+    LDA_recipe <- recipe(label~., train) %>%
+      step_impute_mean(all_numeric_predictors()) %>%
+      step_impute_mode(all_string_predictors()) %>%
+      step_impute_mode(all_factor_predictors()) %>%
+      step_zv(all_predictors()) %>%
+      step_corr(all_numeric_predictors(), threshold = 0.8)
     
     
     #Needed for RF hyperparameters
@@ -239,14 +243,9 @@ for(dataset in datasets) {
     #####
     print("LDA")
   #step_corr doesnt work?
-    corr_recipe <- recipe(label~., train) %>%
-      step_impute_mean(all_numeric_predictors()) %>%
-      step_impute_mode(all_string_predictors()) %>%
-      step_impute_mode(all_factor_predictors()) %>%
-      step_corr(all_numeric_predictors(), threshold = 0.8) %>%
-      prep()
-    train_bake_selected <- corr_recipe %>% bake(train)
-    test_bake_selected <- corr_recipe %>% bake(test)
+      
+    train_bake_selected <- LDA_recipe %>% prep(train) %>% bake(train)
+    test_bake_selected <- LDA_recipe %>% prep(train) %>% bake(test)
 
     LDA_model <- lda(label~., train_bake_selected)
     LDA_preds <- data.frame(predict(LDA_model, test_bake_selected, type = 'prob')$posterior)
@@ -646,14 +645,8 @@ for(dataset in datasets) {
       step_dummy(all_factor_predictors())
     
     
-    train_rule_baked <- XGB_recipe %>%
-      prep(train) %>%
-      bake(train)
-    test_rule_baked <- XGB_recipe %>%
-      prep(train) %>%
-      bake(test)    
-    SRE_train_rules <- fit_rules(train_rule_baked, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
-    SRE_test_rules <- fit_rules(test_rule_baked, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
+    SRE_train_rules <- fit_rules(train_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
+    SRE_test_rules <- fit_rules(test_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
     
     SRE_train <- cbind(SRE_train_rules, fitted_smooths_train)
     SRE_test <- cbind(SRE_test_rules, fitted_smooths_test)
