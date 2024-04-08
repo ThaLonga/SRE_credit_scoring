@@ -3,12 +3,12 @@
 #Lasso
 hyperparameters_LR_R <- list(
   alpha = c(0,.2,.4,.6,.8,1),
-  lambda = c(0, 0.001,0.01,0.1,1,10)
+  lambda = seq(0.001,1, length.out = 100)
 )
 
 hyperparameters_LR_R_tidy <- expand.grid(list(
   mixture = c(0,.2,.4,.6,.8,1),
-  penalty = c(0, 0.001,0.01,0.1,1,10)
+  penalty = seq(0.001,1, length.out = 100)
 ))
 
 hyperparameters_SRE_tidy <- expand.grid(list(
@@ -52,7 +52,7 @@ hyperparameters_XGB <- list(
 
 hyperparameters_XGB_tidy <- crossing(
   trees = c(10,50,100,250,500,1000), #L
-  learn_rate = c(0.01, 0.01, 0.1, 0.2, 0.5), #B
+  learn_rate = c(0.01, 0.1, 0.2, 0.5), #B
   loss_reduction = c(0.5, 1, 1.5, 2), #B
   tree_depth = 6 #default
   #colsample_bytree = 1, #default
