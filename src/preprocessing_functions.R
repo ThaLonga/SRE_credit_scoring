@@ -26,3 +26,16 @@ impute_missing_by_mean_with_dummy <- function(data, value = NULL) {
   }
   return(data)
 }
+
+remove_rows_with_nas <- function(data) {
+  # Count the number of NA values in each row
+  na_count_per_row <- rowSums(is.na(data))
+  
+  # Identify rows with less than 6 NA values
+  rows_to_keep <- na_count_per_row < 6
+  
+  # Subset the data to keep only the desired rows
+  cleaned_data <- data[rows_to_keep, ]
+  
+  return(cleaned_data)
+}

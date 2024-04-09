@@ -18,10 +18,10 @@ registerDoParallel(cl)
 
 #(AUCROC, Brier, partialGini)
 metric = "AUCROC"
-nr_repeats = 3
+nr_repeats = 5
 outerfolds = 2
 nr_innerfolds = 5
-dataset_vector = c("GC", "AC", "GMSC", "TH02")
+dataset_vector = c("GC", "AC", "HMEQ", "TH02")
 
 ctrl <- trainControl(method = "cv", number = nr_innerfolds, classProbs = TRUE, summaryFunction = BigSummary, search = "grid", allowParallel = TRUE)
 metrics = metric_set(roc_auc, brier_class)
@@ -44,7 +44,7 @@ for(dataset in datasets) {
   
   
   # for GMSC only 3 repeats because large dataset
-  if(dataset_counter==3) {nr_repeats <- 3} else {nr_repeats <- 5}
+  #if(dataset_counter==3) {nr_repeats <- 3} else {nr_repeats <- 5}
   nr_innerfolds = nr_repeats
   
   # dummies for categories present in train and test so no new levels error
@@ -96,19 +96,21 @@ for(dataset in datasets) {
       step_impute_mean(all_numeric_predictors()) %>%
       step_impute_mode(all_string_predictors()) %>%
       step_impute_mode(all_factor_predictors()) %>%
-      step_zv(all_predictors()) %>%
       step_hai_winsorized_truncate(all_numeric_predictors(), fraction = 0.025) %>%
       step_rm(!contains("winsorized") & all_numeric_predictors()) %>%
       step_dummy(all_string_predictors()) %>%
       step_dummy(all_factor_predictors()) %>%
+      step_zv(all_predictors()) %>%
       step_normalize(all_numeric_predictors())
     
     LDA_recipe <- recipe(label~., train) %>%
       step_impute_mean(all_numeric_predictors()) %>%
       step_impute_mode(all_string_predictors()) %>%
       step_impute_mode(all_factor_predictors()) %>%
-      step_zv(all_predictors()) %>%
-      step_corr(all_numeric_predictors(), threshold = 0.8)
+      step_dummy(all_string_predictors()) %>%
+      step_dummy(all_factor_predictors()) %>%
+      step_corr(all_numeric_predictors(), threshold = 0.8) %>%
+      step_zv(all_predictors())
     
     GAM_recipe <- recipe(label~., data = train) %>%
       step_impute_mean(all_numeric_predictors()) %>%
@@ -507,7 +509,7 @@ for(dataset in datasets) {
     
     set.seed(innerseed)
     RE_model <- train(XGB_recipe, data = train, method = "pre",
-                      ntrees = min(500, round(nrow(train)/2)), family = "binomial", trControl = ctrl,
+                      ntrees = min(100, round(nrow(train)/2)), family = "binomial", trControl = ctrl,
                       tuneGrid = preGrid, ad.alpha = 0, singleconditions = TRUE,
                       winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
                       verbose = TRUE,
@@ -525,7 +527,7 @@ for(dataset in datasets) {
     
     #Brier
     RE_model_Brier <- train(XGB_recipe, data = train, method = "pre",
-                            ntrees = min(500, round(nrow(train)/2)), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+                            ntrees = min(100, round(nrow(train)/2)), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
                             tuneGrid = getModelInfo("pre")[[1]]$grid( 
                               maxdepth = (RE_model$results%>%slice_max(Brier)%>%dplyr::select(maxdepth))[[1]],
                               learnrate = (RE_model$results%>%slice_max(Brier)%>%dplyr::select(learnrate))[[1]],
@@ -544,7 +546,7 @@ for(dataset in datasets) {
     
     #PG
     RE_model_PG <- train(XGB_recipe, data = train, method = "pre",
-                            ntrees = min(500, round(nrow(train)/2)), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+                            ntrees = min(100, round(nrow(train)/2)), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
                             tuneGrid = getModelInfo("pre")[[1]]$grid( 
                               maxdepth = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(maxdepth))[[1]],
                               learnrate = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(learnrate))[[1]],
@@ -621,8 +623,146 @@ for(dataset in datasets) {
     #####
     # SRE
     #####
-    print("SRE")
-    #extract smooth term names for SRE
+    
+    
+    
+    #SRE loop
+    
+    full_metrics <- list()
+    full_metrics_pg <- list()
+    
+    for(k in 1:nrow(inner_folds)) {
+      cat("SRE inner fold", k, "/ 5 \n")
+      inner_train <- analysis(inner_folds$splits[[k]])
+      inner_test <- assessment(inner_folds$splits[[k]])
+      
+      inner_train_bake <- XGB_recipe %>% prep(inner_train) %>% bake(inner_train)
+      inner_test_bake <- XGB_recipe %>% prep(inner_train) %>% bake(inner_test)
+      
+      smooth_terms <- grep("s\\(", unlist(str_split(as.character(formula), " \\+ ")), value = TRUE)
+      # Extract and fitted values for each smooth term
+      fitted_smooths_train <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(inner_train_bake)))
+      fitted_smooths_test <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(inner_test_bake)))
+      colnames(fitted_smooths_train) <- smooth_terms
+      colnames(fitted_smooths_test) <- smooth_terms
+      for (j in seq_along(smooth_terms)) {
+        current_smooth <- smooth_terms[j]
+        fitted_values_train <- predict(extract_fit_engine(final_GAM_fit), inner_train_bake, type = "terms")[, current_smooth]
+        fitted_smooths_train[, j] <- fitted_values_train
+        fitted_values_test <- predict(extract_fit_engine(final_GAM_fit), inner_test_bake, type = "terms")[, current_smooth]
+        fitted_smooths_test[, j] <- fitted_values_test 
+      }
+      
+      SRE_train_rules <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
+      SRE_test_rules <- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
+      
+      SRE_train <- cbind(SRE_train_rules, fitted_smooths_train)
+      SRE_test <- cbind(SRE_test_rules, fitted_smooths_test)
+      
+      
+      winsorizable <- get_splineworthy_columns(SRE_train)
+      
+      
+      indices <- list(
+        list(analysis = 1:nrow(SRE_train), assessment = (nrow(SRE_train)+1):(nrow(SRE_train)+nrow(SRE_test)))
+      )
+      
+      splits <- lapply(indices, make_splits, data = rbind(SRE_train, SRE_test))
+      
+      SRE_split <- manual_rset(splits, c("Split SRE"))
+      
+      normalizable <- colnames(training(SRE_split$splits[[1]])[unlist(lapply(training(SRE_split$splits[[1]]), function(x) n_distinct(x)>2))])
+      SRE_recipe <- recipe(label~., data = training(SRE_split$splits[[1]])) %>%
+        step_hai_winsorized_truncate(all_of(names(!!training(SRE_split$splits[[1]]))[!!winsorizable]), fraction = 0.025) %>%
+        step_rm(all_of(names(!!training(SRE_split$splits[[1]]))[!!winsorizable])) %>%
+        step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
+        step_mutate(across(where(is.logical), as.integer)) %>%
+        step_normalize(all_of(setdiff(!!normalizable, colnames(!!training(SRE_split$splits[[1]])[!!winsorizable])))) %>%
+        step_zv()
+      
+      #regular lasso
+      SRE_model <- 
+        parsnip::logistic_reg(
+          mode = "classification",
+          mixture = 1,
+          penalty = tune()
+        ) %>%
+        set_engine("glmnet")
+      
+      SRE_wf <- workflow() %>%
+        #add_formula(label~.) %>%
+        add_recipe(SRE_recipe) %>%
+        add_model(SRE_model)
+      
+      SRE_tuned <- tune::tune_grid(
+        object = SRE_wf,
+        resamples = SRE_split,
+        grid = hyperparameters_SRE_tidy, 
+        metrics = metrics,
+        control = tune::control_grid(verbose = TRUE, save_pred = TRUE))
+      
+      #for auc, brier
+      metrics_SRE <- SRE_tuned$.metrics[[1]]
+      metrics_SRE$fold <- rep(k, nrow(metrics_SRE))
+      
+      full_metrics <- rbind(full_metrics, metrics_SRE)
+      
+      #for pg
+      metrics_SRE_pg <- suppressMessages(SRE_tuned%>%collect_predictions(summarize = FALSE) %>%
+        group_by(id, penalty, .config) %>%
+        summarise(partial_gini = partialGini(.pred_X1, label)))
+      metrics_SRE_pg$fold <- rep(k, nrow(metrics_SRE_pg))
+      
+      full_metrics_pg <- rbind(full_metrics_pg, metrics_SRE_pg)
+      
+      
+    }
+    
+    print("hyperparameters found")
+    
+    aggregated_metrics <- full_metrics %>% group_by(penalty, .config, .metric) %>%
+      summarise(mean_perf = mean(.estimate))
+    aggregated_metrics_pg <- full_metrics_pg %>% group_by(penalty, .config) %>%
+      summarise(mean_perf = mean(partial_gini))
+    
+    best_lambda_auc <- aggregated_metrics %>% filter(.metric=="roc_auc") %>% ungroup() %>% slice_max(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
+    best_lambda_brier <- aggregated_metrics %>% filter(.metric=="brier_class") %>% ungroup() %>% slice_min(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
+    best_lambda_pg <- aggregated_metrics_pg %>% ungroup() %>% slice_max(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
+    
+    lambda_sd_auc <- sd(unlist(
+      full_metrics %>% filter(.metric=="roc_auc") %>%
+        group_by(fold) %>%
+        slice_max(.estimate) %>%
+        slice_head() %>%
+        ungroup() %>%
+        dplyr::select(penalty)    
+    ))
+    
+    lambda_sd_brier <- sd(unlist(
+      full_metrics %>% filter(.metric=="brier_class") %>%
+        group_by(fold) %>%
+        slice_min(.estimate) %>%
+        slice_head() %>%
+        ungroup() %>%
+        dplyr::select(penalty)    
+    ))
+    
+    lambda_sd_pg <- sd(unlist(
+      full_metrics_pg %>% 
+        group_by(fold) %>%
+        slice_max(partial_gini) %>%
+        slice_head() %>%
+        ungroup() %>%
+        dplyr::select(penalty)    
+    ))
+    
+    
+    lambda_1se_auc <- best_lambda_auc + lambda_sd_auc
+    lambda_1se_brier <- best_lambda_brier + lambda_sd_brier
+    lambda_1se_pg <- best_lambda_pg + lambda_sd_pg
+    
+
+    #preprocessing full training and test set
     smooth_terms <- grep("s\\(", unlist(str_split(as.character(formula), " \\+ ")), value = TRUE)
     # Extract and fitted values for each smooth term
     fitted_smooths_train <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(train_bake)))
@@ -631,19 +771,11 @@ for(dataset in datasets) {
     colnames(fitted_smooths_test) <- smooth_terms
     for (j in seq_along(smooth_terms)) {
       current_smooth <- smooth_terms[j]
-      fitted_values_train <- predict(extract_fit_engine(final_GAM_fit),train_bake, type = "terms")[, current_smooth]
+      fitted_values_train <- predict(extract_fit_engine(final_GAM_fit), train_bake, type = "terms")[, current_smooth]
       fitted_smooths_train[, j] <- fitted_values_train
       fitted_values_test <- predict(extract_fit_engine(final_GAM_fit), test_bake, type = "terms")[, current_smooth]
       fitted_smooths_test[, j] <- fitted_values_test 
     }
-    
-    SRE_recipe <- recipe(label ~., data = train) %>%
-      #step_impute_mean(all_numeric_predictors()) %>%
-      #step_impute_mode(all_string_predictors()) %>%
-      #step_impute_mode(all_factor_predictors()) %>%
-      step_dummy(all_string_predictors()) %>%
-      step_dummy(all_factor_predictors())
-    
     
     SRE_train_rules <- fit_rules(train_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
     SRE_test_rules <- fit_rules(test_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
@@ -651,9 +783,9 @@ for(dataset in datasets) {
     SRE_train <- cbind(SRE_train_rules, fitted_smooths_train)
     SRE_test <- cbind(SRE_test_rules, fitted_smooths_test)
     
-
+    
     winsorizable <- get_splineworthy_columns(SRE_train)
- 
+    
     
     indices <- list(
       list(analysis = 1:nrow(SRE_train), assessment = (nrow(SRE_train)+1):(nrow(SRE_train)+nrow(SRE_test)))
@@ -664,6 +796,7 @@ for(dataset in datasets) {
     SRE_split <- manual_rset(splits, c("Split SRE"))
     
     normalizable <- colnames(training(SRE_split$splits[[1]])[unlist(lapply(training(SRE_split$splits[[1]]), function(x) n_distinct(x)>2))])
+    
     SRE_recipe <- recipe(label~., data = training(SRE_split$splits[[1]])) %>%
       step_hai_winsorized_truncate(all_of(names(!!training(SRE_split$splits[[1]]))[!!winsorizable]), fraction = 0.025) %>%
       step_rm(all_of(names(!!training(SRE_split$splits[[1]]))[!!winsorizable])) %>%
@@ -672,89 +805,144 @@ for(dataset in datasets) {
       step_normalize(all_of(setdiff(!!normalizable, colnames(!!training(SRE_split$splits[[1]])[!!winsorizable])))) %>%
       step_zv()
     
-    set.seed(i)
-    inner_folds_SRE <- SRE_train %>% vfold_cv(v=5)
     
-    #regular lasso
-    SRE_model <- 
-      parsnip::logistic_reg(
-        mode = "classification",
-        mixture = 1,
-        penalty = tune()
-      ) %>%
-      set_engine("glmnet")
     
-    SRE_wf <- workflow() %>%
-      #add_formula(label~.) %>%
-      add_recipe(SRE_recipe) %>%
-      add_model(SRE_model)
     
-    SRE_tuned <- tune::tune_grid(
-      object = SRE_wf,
-      resamples = inner_folds_SRE,
-      grid = hyperparameters_SRE_tidy, 
-      metrics = metrics,
-      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
-    )
-    
-
-    SRE_metrics <- SRE_tuned %>% 
-      collect_metrics()
-    
-    lambda_min_auc <- SRE_metrics %>%
-      filter(.metric=="roc_auc") %>%
-      slice_max(mean) %>%
-      dplyr::select(penalty) %>%
-      pull()
-    
-    lambda_min_brier <- SRE_metrics %>%
-      filter(.metric=="brier_class") %>%
-      slice_min(mean) %>%
-      dplyr::select(penalty) %>%
-      pull()
-    
-    lambda_min_pg <- suppressMessages(SRE_tuned %>%
-      collect_predictions(summarize = FALSE) %>%
-      group_by(id, penalty, .config) %>%
-      summarise(partial_gini = partialGini(.pred_X1, label)) %>%
-      group_by(penalty, .config) %>%
-      summarise(avg_pg = mean(partial_gini)) %>%
-      ungroup() %>%
-      slice_max(avg_pg) %>%
-      slice_head() %>%
-      dplyr::select(penalty) %>%                            
-      pull())
-    
-
-    lambda_sd_auc <- sd(unlist(lapply(SRE_tuned$.metrics, function(tbl) {
-      # Filter to keep rows where penalty is "0.0111"
-      # Note: Ensure the penalty column is treated as character if it's not numeric
-      tbl %>% filter(.metric=="roc_auc") %>%
-        slice_max(.estimate) %>%
-        dplyr::select(penalty)    
-      })))
-    
-    lambda_sd_brier <- sd(unlist(lapply(SRE_tuned$.metrics, function(tbl) {
-      # Filter to keep rows where penalty is "0.0111"
-      # Note: Ensure the penalty column is treated as character if it's not numeric
-      tbl %>% filter(.metric=="brier_class") %>%
-        slice_min(.estimate) %>%
-        dplyr::select(penalty)    
-    })))
-    
-    lambda_sd_pg <- suppressMessages(SRE_tuned %>%
-      collect_predictions(summarize = FALSE) %>%
-      group_by(id, penalty, .config) %>%
-      summarise(partial_gini = partialGini(.pred_X1, label)) %>%
-      group_by(id) %>%
-      slice_max(partial_gini) %>%
-      ungroup() %>%
-      summarise(sd(penalty)) %>%
-      pull())
-    
-    lambda_1se_auc <- lambda_min_auc + lambda_sd_auc
-    lambda_1se_brier <- lambda_min_brier + lambda_sd_brier
-    lambda_1se_pg <- lambda_min_pg + lambda_sd_pg
+#    print("SRE")
+#    #extract smooth term names for SRE
+#    smooth_terms <- grep("s\\(", unlist(str_split(as.character(formula), " \\+ ")), value = TRUE)
+#    # Extract and fitted values for each smooth term
+#    fitted_smooths_train <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(train_bake)))
+#    fitted_smooths_test <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(test_bake)))
+#    colnames(fitted_smooths_train) <- smooth_terms
+#    colnames(fitted_smooths_test) <- smooth_terms
+#    for (j in seq_along(smooth_terms)) {
+#      current_smooth <- smooth_terms[j]
+#      fitted_values_train <- predict(extract_fit_engine(final_GAM_fit),train_bake, type = "terms")[, current_smooth]
+#      fitted_smooths_train[, j] <- fitted_values_train
+#      fitted_values_test <- predict(extract_fit_engine(final_GAM_fit), test_bake, type = "terms")[, current_smooth]
+#      fitted_smooths_test[, j] <- fitted_values_test 
+#    }
+#    
+#    SRE_recipe <- recipe(label ~., data = train) %>%
+#      #step_impute_mean(all_numeric_predictors()) %>%
+#      #step_impute_mode(all_string_predictors()) %>%
+#      #step_impute_mode(all_factor_predictors()) %>%
+#      step_dummy(all_string_predictors()) %>%
+#      step_dummy(all_factor_predictors())
+#    
+#    
+#    SRE_train_rules <- fit_rules(train_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
+#    SRE_test_rules <- fit_rules(test_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
+#    
+#    SRE_train <- cbind(SRE_train_rules, fitted_smooths_train)
+#    SRE_test <- cbind(SRE_test_rules, fitted_smooths_test)
+#    
+#
+#    winsorizable <- get_splineworthy_columns(SRE_train)
+# 
+#    
+#    indices <- list(
+#      list(analysis = 1:nrow(SRE_train), assessment = (nrow(SRE_train)+1):(nrow(SRE_train)+nrow(SRE_test))))
+#      
+#    
+#    
+#    splits <- lapply(indices, make_splits, data = rbind(SRE_train, SRE_test))
+#    
+#    SRE_split <- manual_rset(splits, c("Split SRE"))
+#    
+#    normalizable <- colnames(training(SRE_split$splits[[1]])[unlist(lapply(training(SRE_split$splits[[1]]), function(x) n_distinct(x)>2))])
+#    SRE_recipe <- recipe(label~., data = training(SRE_split$splits[[1]])) %>%
+#      step_hai_winsorized_truncate(all_of(names(!!training(SRE_split$splits[[1]]))[!!winsorizable]), fraction = 0.025) %>%
+#      step_rm(all_of(names(!!training(SRE_split$splits[[1]]))[!!winsorizable])) %>%
+#      step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
+#      step_mutate(across(where(is.logical), as.integer)) %>%
+#      step_normalize(all_of(setdiff(!!normalizable, colnames(!!training(SRE_split$splits[[1]])[!!winsorizable])))) %>%
+#      step_zv()
+#    
+#    set.seed(i)
+#    inner_folds_SRE <- SRE_train %>% vfold_cv(v=5)
+#    
+#    #regular lasso
+#    SRE_model <- 
+#      parsnip::logistic_reg(
+#        mode = "classification",
+#        mixture = 1,
+#        penalty = tune()
+#      ) %>%
+#      set_engine("glmnet")
+#    
+#    SRE_wf <- workflow() %>%
+#      #add_formula(label~.) %>%
+#      add_recipe(SRE_recipe) %>%
+#      add_model(SRE_model)
+#    
+#    SRE_tuned <- tune::tune_grid(
+#      object = SRE_wf,
+#      resamples = inner_folds_SRE,
+#      grid = hyperparameters_SRE_tidy, 
+#      metrics = metrics,
+#      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
+#    )
+#    
+#
+#    SRE_metrics <- SRE_tuned %>% 
+#      collect_metrics()
+#    
+#    lambda_min_auc <- SRE_metrics %>%
+#      filter(.metric=="roc_auc") %>%
+#      slice_max(mean) %>%
+#      dplyr::select(penalty) %>%
+#      pull()
+#    
+#    lambda_min_brier <- SRE_metrics %>%
+#      filter(.metric=="brier_class") %>%
+#      slice_min(mean) %>%
+#      dplyr::select(penalty) %>%
+#      pull()
+#    
+#    lambda_min_pg <- suppressMessages(SRE_tuned %>%
+#      collect_predictions(summarize = FALSE) %>%
+#      group_by(id, penalty, .config) %>%
+#      summarise(partial_gini = partialGini(.pred_X1, label)) %>%
+#      group_by(penalty, .config) %>%
+#      summarise(avg_pg = mean(partial_gini)) %>%
+#      ungroup() %>%
+#      slice_max(avg_pg) %>%
+#      slice_head() %>%
+#      dplyr::select(penalty) %>%                            
+#      pull())
+#    
+#
+#    lambda_sd_auc <- sd(unlist(lapply(SRE_tuned$.metrics, function(tbl) {
+#      # Filter to keep rows where penalty is "0.0111"
+#      # Note: Ensure the penalty column is treated as character if it's not numeric
+#      tbl %>% filter(.metric=="roc_auc") %>%
+#        slice_max(.estimate) %>%
+#        dplyr::select(penalty)    
+#      })))
+#    
+#    lambda_sd_brier <- sd(unlist(lapply(SRE_tuned$.metrics, function(tbl) {
+#      # Filter to keep rows where penalty is "0.0111"
+#      # Note: Ensure the penalty column is treated as character if it's not numeric
+#      tbl %>% filter(.metric=="brier_class") %>%
+#        slice_min(.estimate) %>%
+#        dplyr::select(penalty)    
+#    })))
+#    
+#    lambda_sd_pg <- suppressMessages(SRE_tuned %>%
+#      collect_predictions(summarize = FALSE) %>%
+#      group_by(id, penalty, .config) %>%
+#      summarise(partial_gini = partialGini(.pred_X1, label)) %>%
+#      group_by(id) %>%
+#      slice_max(partial_gini) %>%
+#      ungroup() %>%
+#      summarise(sd(penalty)) %>%
+#      pull())
+#    
+#    lambda_1se_auc <- lambda_min_auc + lambda_sd_auc
+#    lambda_1se_brier <- lambda_min_brier + lambda_sd_brier
+#    lambda_1se_pg <- lambda_min_pg + lambda_sd_pg
     
   
     SRE_model_auc <- 

@@ -3,6 +3,10 @@ p_load(tidyverse, fastDummies, dplyr, DescTools)
 
 source('./src/preprocessing_functions.R')
 
+
+
+
+
 #German
 german <- read_table("data/statlog+german+credit+data/german.csv", col_names = FALSE)
 
@@ -25,6 +29,27 @@ australian <- australian %>%
                         labels = make.names(levels(label))))
 
 save(australian, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/australian.Rda")
+
+#HMEQ
+HMEQ <- read_csv("data/HMEQ/hmeq.csv")
+
+HMEQ <- HMEQ %>%
+  mutate_at(vars(BAD), as.factor) %>%
+  rename("label" = "BAD") %>%
+  mutate(label = factor(label, 
+                        labels = make.names(levels(label))))
+
+HMEQ <- remove_rows_with_nas(HMEQ) #removes rows with >= 6 NAs
+
+#add flags for missing values
+columns_to_flag <- colnames(HMEQ)[unlist(lapply(HMEQ, function(x) sum(is.na(x))))>0]
+for (col in columns_to_flag) {
+  flag_col_name <- paste0(col, "_FLAG")
+  HMEQ[[flag_col_name]] <- as.factor(ifelse(is.na(HMEQ[[col]]), 1, 0))
+}
+
+save(HMEQ, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/hmeq.Rda")
+
 
 
 #GMSC
