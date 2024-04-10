@@ -38,7 +38,7 @@ AUC_results <- metric_results
 Brier_results <- metric_results
 PG_results <- metric_results
 
-dataset_counter = 1
+dataset_counter = 4
 
 for(dataset in datasets) {
   
@@ -78,6 +78,7 @@ for(dataset in datasets) {
       step_impute_mean(all_numeric_predictors()) %>%
       step_impute_mode(all_string_predictors()) %>%
       step_impute_mode(all_factor_predictors()) %>%
+      step_novel(all_nominal_predictors()) %>%
       step_zv(all_predictors())
     
     # for tree-based that do require dummies
@@ -85,6 +86,7 @@ for(dataset in datasets) {
       step_impute_mean(all_numeric_predictors()) %>%
       step_impute_mode(all_string_predictors()) %>%
       step_impute_mode(all_factor_predictors()) %>%
+      step_novel(all_nominal_predictors()) %>%
       step_dummy(all_string_predictors()) %>%
       step_dummy(all_factor_predictors()) %>%
       step_zv(all_predictors())
@@ -96,6 +98,7 @@ for(dataset in datasets) {
       step_impute_mean(all_numeric_predictors()) %>%
       step_impute_mode(all_string_predictors()) %>%
       step_impute_mode(all_factor_predictors()) %>%
+      step_novel(all_nominal_predictors()) %>%
       step_hai_winsorized_truncate(all_numeric_predictors(), fraction = 0.025) %>%
       step_rm(!contains("winsorized") & all_numeric_predictors()) %>%
       step_dummy(all_string_predictors()) %>%
@@ -107,6 +110,7 @@ for(dataset in datasets) {
       step_impute_mean(all_numeric_predictors()) %>%
       step_impute_mode(all_string_predictors()) %>%
       step_impute_mode(all_factor_predictors()) %>%
+      step_novel(all_nominal_predictors()) %>%
       step_dummy(all_string_predictors()) %>%
       step_dummy(all_factor_predictors()) %>%
       step_corr(all_numeric_predictors(), threshold = 0.8) %>%
@@ -118,6 +122,7 @@ for(dataset in datasets) {
       step_impute_mode(all_factor_predictors()) %>%
       #step_hai_winsorized_truncate(all_numeric_predictors(), fraction = 0.025) %>%
       #step_rm(!contains("winsorized") & all_numeric_predictors()) %>%
+      step_novel(all_nominal_predictors()) %>%
       step_dummy(all_string_predictors()) %>%
       step_dummy(all_factor_predictors()) %>%
       step_zv(all_predictors()) %>%
@@ -337,46 +342,59 @@ for(dataset in datasets) {
     #reload hyperparameters because it uses ncol(train_bake_x)
     source("./src/hyperparameters.R")
     
-    modellist <- list()
-    for (ntree in c(100,250,500,750,1000)){
-      set.seed(innerseed)
-      print(ntree)
-      
-      RF_model <- train(TREE_recipe, data = train, method = "ranger", trControl = ctrl,
-                        tuneGrid = expand.grid(mtry = hyperparameters_RF$mtry,
-                                               splitrule = hyperparameters_RF$splitrule,
-                                               min.node.size = hyperparameters_RF$min.node.size),
-                        num.tree = ntree, 
-                        metric = "AUCROC")
-      key <- toString(ntree)
-      modellist[[key]] <- RF_model
-    }
+    
+    #tidy
+    
+    RF_model <- 
+      parsnip::rand_forest(
+        mode = "classification",
+        trees = tune(),
+        mtry = tune(),
+        min_n = tune()
+      ) %>%
+      set_engine("ranger")
+    
+    RF_wf <- workflow() %>%
+      add_recipe(XGB_recipe) %>%
+      add_model(RF_model)
+    
+    RF_tuned <- tune::tune_grid(
+      object = RF_wf,
+      resamples = inner_folds,
+      grid = hyperparameters_RF_tidy,
+      metrics = metrics,
+      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
+    )
     
     
-    #AUC
-    RF_model_AUC <- extractBestModel(modellist, "AUCROC")
-    RF_preds_AUC <- data.frame(predict(RF_model_AUC, test, type = 'prob'))
-    names(RF_preds_AUC) <- c("X0", "X1")
-    RF_preds_AUC$label <- test$label
-    g <- roc(label ~ X1, data = RF_preds_AUC, direction = "<")
-    AUC <- g$auc
-    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", AUC)
+    best_model_auc <- RF_tuned %>% select_best("roc_auc")
+    final_RF_wf_auc <- RF_wf %>% finalize_workflow(best_model_auc)
+    final_RF_fit_auc <- final_RF_wf_auc %>% last_fit(folds$splits[[i]], metrics = metrics)
     
-    #PG
-    RF_model_PG <- extractBestModel(modellist, "partialGini")
-    RF_preds_PG <- data.frame(predict(RF_model_PG, test, type = 'prob'))
-    names(RF_preds_PG) <- c("X0", "X1")
-    RF_preds_PG$label <- test$label
-    pg <- partialGini(RF_preds_PG$X1, RF_preds_PG$label)
+    best_model_brier <- RF_tuned %>% select_best("brier_class")
+    final_RF_wf_brier <- RF_wf %>% finalize_workflow(best_model_brier)
+    final_RF_fit_brier <- final_RF_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
+    
+    best_model_pg <- RF_tuned %>% select_best_pg_RF()
+    final_RF_wf_pg <- RF_wf %>% finalize_workflow(best_model_pg)
+    final_RF_fit_pg <- final_RF_wf_pg %>% last_fit(folds$splits[[i]], metrics = metrics)
+    
+    
+    auc <- final_RF_fit_auc %>%
+      collect_metrics() %>%
+      filter(.metric == "roc_auc") %>%
+      pull(.estimate)
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", auc)
+    
+    brier <- final_RF_fit_brier %>%
+      collect_metrics() %>%
+      filter(.metric == "brier_class") %>%
+      pull(.estimate)
+    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", brier)
+    
+    pg <- final_RF_fit_pg %>%
+      collect_pg()
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", pg)
-    
-    #Brier
-    RF_model_Brier <- extractBestModel(modellist, "Brier")
-    RF_preds_Brier <- data.frame(predict(RF_model_Brier, test, type = 'prob'))
-    names(RF_preds_Brier) <- c("X0", "X1")
-    RF_preds_Brier$label <- test$label
-    bs <- brier_score(truth = RF_preds_Brier$label, preds = RF_preds_Brier$X1)
-    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", bs)
     
     
     #####
@@ -1010,10 +1028,10 @@ for(dataset in datasets) {
     
   
   }
-  write.csv(AUC_results, file = paste("./results/",dataset_vector[1],"_AUC.csv", sep = ""))
-  write.csv(Brier_results, file = paste("./results/",dataset_vector[1],"_BRIER.csv", sep = ""))
+  write.csv(AUC_results, file = paste("./results/",dataset_vector[dataset_counter],"_AUC.csv", sep = ""))
+  write.csv(Brier_results, file = paste("./results/",dataset_vector[dataset_counter],"_BRIER.csv", sep = ""))
   PG_results$metric<-unlist(PG_results$metric)
-  write.csv(PG_results, file = paste("./results/",dataset_vector[1],"_PG.csv", sep = ""))
+  write.csv(PG_results, file = paste("./results/",dataset_vector[dataset_counter],"_PG.csv", sep = ""))
   
   dataset_counter <- dataset_counter + 1
 }
