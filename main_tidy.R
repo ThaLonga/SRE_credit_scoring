@@ -38,7 +38,7 @@ AUC_results <- metric_results
 Brier_results <- metric_results
 PG_results <- metric_results
 
-dataset_counter = 4
+dataset_counter = 2
 
 for(dataset in datasets) {
   
@@ -523,6 +523,7 @@ for(dataset in datasets) {
       step_impute_mean(all_numeric_predictors()) %>%
       step_impute_mode(all_string_predictors()) %>%
       step_impute_mode(all_factor_predictors()) %>%
+      step_novel(all_nominal_predictors()) %>%
       step_zv(all_predictors())
     
     set.seed(innerseed)
@@ -657,6 +658,31 @@ for(dataset in datasets) {
       inner_train_bake <- XGB_recipe %>% prep(inner_train) %>% bake(inner_train)
       inner_test_bake <- XGB_recipe %>% prep(inner_train) %>% bake(inner_test)
       
+      #fit GAM
+      inner_train_gam_processed <- GAM_recipe%>%prep(inner_train)%>%bake(inner_train)
+      
+      smooth_vars = colnames(inner_train_gam_processed%>%dplyr::select(-label))[get_splineworthy_columns(inner_train_gam_processed)]
+      formula <- as.formula(
+        stringr::str_sub(paste("label ~", 
+                               paste(ifelse(names(inner_train_gam_processed%>%dplyr::select(-label)) %in% smooth_vars, "s(", ""),
+                                     names(inner_train_gam_processed%>%dplyr::select(-label)),
+                                     ifelse(names(inner_train_gam_processed%>%dplyr::select(-label)) %in% smooth_vars, ")",""),
+                                     collapse = " + ")
+        ), 0, -1)
+      )
+      
+      GAM_model <- 
+        parsnip::gen_additive_mod() %>%
+        set_mode("classification") %>%
+        set_engine("mgcv")
+      
+      GAM_wf <- workflow() %>%
+        add_recipe(GAM_recipe) %>%
+        add_model(GAM_model, formula = formula)
+      
+      final_GAM_fit <- GAM_wf %>% last_fit(folds$splits[[i]], metrics = metrics)
+      
+      
       smooth_terms <- grep("s\\(", unlist(str_split(as.character(formula), " \\+ ")), value = TRUE)
       # Extract and fitted values for each smooth term
       fitted_smooths_train <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(inner_train_bake)))
@@ -732,8 +758,6 @@ for(dataset in datasets) {
       metrics_SRE_pg$fold <- rep(k, nrow(metrics_SRE_pg))
       
       full_metrics_pg <- rbind(full_metrics_pg, metrics_SRE_pg)
-      
-      
     }
     
     print("hyperparameters found")

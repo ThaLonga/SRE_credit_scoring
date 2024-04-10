@@ -38,6 +38,12 @@ hyperparameters_RF <- list(
   min.node.size = 1
 )
 
+hyperparameters_RF_tidy <- expand.grid(list(
+  trees = c(100,250,500,750,1000),
+  mtry = sqrt(ncol(train_bake_x)*c(0.1,0.25,0.5,1,2,4)),
+  min_n = 1
+))
+
 #XGB
 # B2Boost  and Lessmann
 hyperparameters_XGB <- list(
