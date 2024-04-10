@@ -34,13 +34,14 @@ metric_results <- data.frame(
   metric = double(),
   stringsAsFactors = FALSE
 )
-AUC_results <- metric_results
-Brier_results <- metric_results
-PG_results <- metric_results
 
-dataset_counter = 2
+dataset_counter = 1
 
 for(dataset in datasets) {
+  
+  AUC_results <- metric_results
+  Brier_results <- metric_results
+  PG_results <- metric_results
   
   
   # for GMSC only 3 repeats because large dataset
@@ -528,7 +529,7 @@ for(dataset in datasets) {
     
     set.seed(innerseed)
     RE_model <- train(XGB_recipe, data = train, method = "pre",
-                      ntrees = min(100, round(nrow(train)/2)), family = "binomial", trControl = ctrl,
+                      ntrees = min(500, round(nrow(train)/2)), family = "binomial", trControl = ctrl,
                       tuneGrid = preGrid, ad.alpha = 0, singleconditions = TRUE,
                       winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
                       verbose = TRUE,

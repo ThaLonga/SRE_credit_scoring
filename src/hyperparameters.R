@@ -72,7 +72,7 @@ hyperparameters_XGB_tidy <- crossing(
 
 preGrid <- getModelInfo("pre")[[1]]$grid( 
   maxdepth = c(2,3),
-  learnrate = c(.01, .05, .1),
+  learnrate = c(0.005, .01, .05, .1),
   penalty.par.val = c("lambda.1se"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
   sampfrac = 1,
   use.grad = TRUE

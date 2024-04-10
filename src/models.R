@@ -73,7 +73,7 @@ select_best_pg_LRR <- function(.data) {
       collect_predictions(summarize = TRUE) %>%
       group_by(penalty, mixture, .config) %>%
       summarise(partial_gini = partialGini(.pred_X1, label)) %>%
-      group_by(penalty, .config) %>%
+      group_by(penalty, mixture, .config) %>%
       summarise(avg_pg = mean(partial_gini)) %>%
       ungroup() %>%
       slice_max(avg_pg) %>%
@@ -168,9 +168,14 @@ fit_rules <- function(dataframe, rules) {
   
   train_rules <- dataframe
   for (i in seq_along(rule_list)) {
-    rule_result <- eval(rule_list[[i]])
-    column_name <- paste0("rule_", i)
-    train_rules[column_name] <- rule_result
+    tryCatch({
+      rule_result <- eval(rule_list[[i]])
+      column_name <- paste0("rule_", i)
+      train_rules[column_name] <- rule_result
+    }, error = function(e) {
+      warning(sprintf("Rule %d failed with error: %s", i, e$message))
+      NA
+    })
   }
   return(train_rules)
 }
