@@ -35,7 +35,7 @@ metric_results <- data.frame(
   stringsAsFactors = FALSE
 )
 
-dataset_counter = 1
+dataset_counter = 2
 
 for(dataset in datasets) {
   
@@ -648,8 +648,9 @@ for(dataset in datasets) {
     
     #SRE loop
     
-    full_metrics <- list()
-    full_metrics_pg <- list()
+    full_metrics_AUC <- list()
+    full_metrics_Brier <- list()
+    full_metrics_PG <- list()
     
     for(k in 1:nrow(inner_folds)) {
       cat("SRE inner fold", k, "/ 5 \n")
@@ -698,31 +699,66 @@ for(dataset in datasets) {
         fitted_smooths_test[, j] <- fitted_values_test 
       }
       
-      SRE_train_rules <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
-      SRE_test_rules <- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
+      SRE_train_rules_AUC <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
+      SRE_test_rules_AUC <- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
       
-      SRE_train <- cbind(SRE_train_rules, fitted_smooths_train)
-      SRE_test <- cbind(SRE_test_rules, fitted_smooths_test)
+      SRE_train_rules_Brier <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model_Brier$finalModel$rules$description))$rules)
+      SRE_test_rules_Brier<- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model_Brier$finalModel$rules$description))$rules)
+      
+      SRE_train_rules_PG <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model_PG$finalModel$rules$description))$rules)
+      SRE_test_rules_PG <- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model_PG$finalModel$rules$description))$rules)
+      
+      SRE_train_AUC <- cbind(SRE_train_rules_AUC, fitted_smooths_train)
+      SRE_test_AUC <- cbind(SRE_test_rules_AUC, fitted_smooths_test)
+      
+      SRE_train_Brier <- cbind(SRE_train_rules_Brier, fitted_smooths_train)
+      SRE_test_Brier <- cbind(SRE_test_rules_Brier, fitted_smooths_test)
+      
+      SRE_train_PG <- cbind(SRE_train_rules_PG, fitted_smooths_train)
+      SRE_test_PG <- cbind(SRE_test_rules_PG, fitted_smooths_test)
       
       
-      winsorizable <- get_splineworthy_columns(SRE_train)
+      winsorizable_AUC <- get_splineworthy_columns(SRE_train_AUC)
+      winsorizable_Brier <- get_splineworthy_columns(SRE_train_Brier)
+      winsorizable_PG <- get_splineworthy_columns(SRE_train_PG)
       
       
       indices <- list(
-        list(analysis = 1:nrow(SRE_train), assessment = (nrow(SRE_train)+1):(nrow(SRE_train)+nrow(SRE_test)))
+        list(analysis = 1:nrow(SRE_train_AUC), assessment = (nrow(SRE_train_AUC)+1):(nrow(SRE_train_AUC)+nrow(SRE_test_AUC)))
       )
+      splits_AUC <- lapply(indices, make_splits, data = rbind(SRE_train_AUC, SRE_test_AUC))
+      splits_Brier <- lapply(indices, make_splits, data = rbind(SRE_train_Brier, SRE_test_Brier))
+      splits_PG <- lapply(indices, make_splits, data = rbind(SRE_train_PG, SRE_test_PG))
+      SRE_split_AUC <- manual_rset(splits_AUC, c("Split SRE"))
+      SRE_split_Brier <- manual_rset(splits_Brier, c("Split SRE"))
+      SRE_split_PG <- manual_rset(splits_PG, c("Split SRE"))
       
-      splits <- lapply(indices, make_splits, data = rbind(SRE_train, SRE_test))
-      
-      SRE_split <- manual_rset(splits, c("Split SRE"))
-      
-      normalizable <- colnames(training(SRE_split$splits[[1]])[unlist(lapply(training(SRE_split$splits[[1]]), function(x) n_distinct(x)>2))])
-      SRE_recipe <- recipe(label~., data = training(SRE_split$splits[[1]])) %>%
-        step_hai_winsorized_truncate(all_of(names(!!training(SRE_split$splits[[1]]))[!!winsorizable]), fraction = 0.025) %>%
-        step_rm(all_of(names(!!training(SRE_split$splits[[1]]))[!!winsorizable])) %>%
+      normalizable_AUC <- colnames(training(SRE_split_AUC$splits[[1]])[unlist(lapply(training(SRE_split_AUC$splits[[1]]), function(x) n_distinct(x)>2))])
+      normalizable_Brier <- colnames(training(SRE_split_Brier$splits[[1]])[unlist(lapply(training(SRE_split_Brier$splits[[1]]), function(x) n_distinct(x)>2))])
+      normalizable_PG <- colnames(training(SRE_split_PG$splits[[1]])[unlist(lapply(training(SRE_split_PG$splits[[1]]), function(x) n_distinct(x)>2))])
+
+      SRE_recipe_AUC <- recipe(label~., data = training(SRE_split_AUC$splits[[1]])) %>%
+        step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_AUC$splits[[1]]))[!!winsorizable_AUC]), fraction = 0.025) %>%
+        step_rm(all_of(names(!!training(SRE_split_AUC$splits[[1]]))[!!winsorizable_AUC])) %>%
         step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
         step_mutate(across(where(is.logical), as.integer)) %>%
-        step_normalize(all_of(setdiff(!!normalizable, colnames(!!training(SRE_split$splits[[1]])[!!winsorizable])))) %>%
+        step_normalize(all_of(setdiff(!!normalizable_AUC, colnames(!!training(SRE_split_AUC$splits[[1]])[!!winsorizable_AUC])))) %>%
+        step_zv()
+
+      SRE_recipe_Brier <- recipe(label~., data = training(SRE_split_Brier$splits[[1]])) %>%
+        step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_Brier$splits[[1]]))[!!winsorizable_Brier]), fraction = 0.025) %>%
+        step_rm(all_of(names(!!training(SRE_split_Brier$splits[[1]]))[!!winsorizable_Brier])) %>%
+        step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
+        step_mutate(across(where(is.logical), as.integer)) %>%
+        step_normalize(all_of(setdiff(!!normalizable_Brier, colnames(!!training(SRE_split_Brier$splits[[1]])[!!winsorizable_Brier])))) %>%
+        step_zv()
+
+      SRE_recipe_PG <- recipe(label~., data = training(SRE_split_PG$splits[[1]])) %>%
+        step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_PG$splits[[1]]))[!!winsorizable_PG]), fraction = 0.025) %>%
+        step_rm(all_of(names(!!training(SRE_split_PG$splits[[1]]))[!!winsorizable_PG])) %>%
+        step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
+        step_mutate(across(where(is.logical), as.integer)) %>%
+        step_normalize(all_of(setdiff(!!normalizable_PG, colnames(!!training(SRE_split_PG$splits[[1]])[!!winsorizable_PG])))) %>%
         step_zv()
       
       #regular lasso
@@ -734,46 +770,72 @@ for(dataset in datasets) {
         ) %>%
         set_engine("glmnet")
       
-      SRE_wf <- workflow() %>%
+      SRE_wf_AUC <- workflow() %>%
         #add_formula(label~.) %>%
-        add_recipe(SRE_recipe) %>%
+        add_recipe(SRE_recipe_AUC) %>%
+        add_model(SRE_model)
+      SRE_wf_Brier <- workflow() %>%
+        #add_formula(label~.) %>%
+        add_recipe(SRE_recipe_Brier) %>%
+        add_model(SRE_model)
+      SRE_wf_PG <- workflow() %>%
+        #add_formula(label~.) %>%
+        add_recipe(SRE_recipe_PG) %>%
         add_model(SRE_model)
       
-      SRE_tuned <- tune::tune_grid(
-        object = SRE_wf,
-        resamples = SRE_split,
+      
+      SRE_tuned_AUC <- tune::tune_grid(
+        object = SRE_wf_AUC,
+        resamples = SRE_split_AUC,
+        grid = hyperparameters_SRE_tidy, 
+        metrics = metrics,
+        control = tune::control_grid(verbose = TRUE, save_pred = TRUE))
+      SRE_tuned_Brier <- tune::tune_grid(
+        object = SRE_wf_Brier,
+        resamples = SRE_split_Brier,
+        grid = hyperparameters_SRE_tidy, 
+        metrics = metrics,
+        control = tune::control_grid(verbose = TRUE, save_pred = TRUE))
+      SRE_tuned_PG <- tune::tune_grid(
+        object = SRE_wf_PG,
+        resamples = SRE_split_PG,
         grid = hyperparameters_SRE_tidy, 
         metrics = metrics,
         control = tune::control_grid(verbose = TRUE, save_pred = TRUE))
       
       #for auc, brier
-      metrics_SRE <- SRE_tuned$.metrics[[1]]
-      metrics_SRE$fold <- rep(k, nrow(metrics_SRE))
-      
-      full_metrics <- rbind(full_metrics, metrics_SRE)
-      
+      metrics_SRE_AUC <- SRE_tuned_AUC$.metrics[[1]]
+      metrics_SRE_Brier <- SRE_tuned_Brier$.metrics[[1]]
+      metrics_SRE_AUC$fold <- rep(k, nrow(metrics_SRE_AUC))
+      metrics_SRE_Brier$fold <- rep(k, nrow(metrics_SRE_Brier))
+
+      full_metrics_AUC <- rbind(full_metrics_AUC, metrics_SRE_AUC)
+      full_metrics_Brier <- rbind(full_metrics_Brier, metrics_SRE_Brier)
+
       #for pg
-      metrics_SRE_pg <- suppressMessages(SRE_tuned%>%collect_predictions(summarize = FALSE) %>%
+      metrics_SRE_PG <- suppressMessages(SRE_tuned_PG%>%collect_predictions(summarize = FALSE) %>%
         group_by(id, penalty, .config) %>%
         summarise(partial_gini = partialGini(.pred_X1, label)))
-      metrics_SRE_pg$fold <- rep(k, nrow(metrics_SRE_pg))
+      metrics_SRE_PG$fold <- rep(k, nrow(metrics_SRE_PG))
       
-      full_metrics_pg <- rbind(full_metrics_pg, metrics_SRE_pg)
+      full_metrics_PG <- rbind(full_metrics_pg, metrics_SRE_pg)
     }
     
     print("hyperparameters found")
     
-    aggregated_metrics <- full_metrics %>% group_by(penalty, .config, .metric) %>%
+    aggregated_metrics_AUC <- full_metrics_AUC %>% group_by(penalty, .config, .metric) %>%
       summarise(mean_perf = mean(.estimate))
-    aggregated_metrics_pg <- full_metrics_pg %>% group_by(penalty, .config) %>%
+    aggregated_metrics_Brier <- full_metrics_Brier %>% group_by(penalty, .config, .metric) %>%
+      summarise(mean_perf = mean(.estimate))
+    aggregated_metrics_PG <- full_metrics_PG %>% group_by(penalty, .config) %>%
       summarise(mean_perf = mean(partial_gini))
     
-    best_lambda_auc <- aggregated_metrics %>% filter(.metric=="roc_auc") %>% ungroup() %>% slice_max(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
-    best_lambda_brier <- aggregated_metrics %>% filter(.metric=="brier_class") %>% ungroup() %>% slice_min(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
-    best_lambda_pg <- aggregated_metrics_pg %>% ungroup() %>% slice_max(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
+    best_lambda_auc <- aggregated_metrics_AUC %>% filter(.metric=="roc_auc") %>% ungroup() %>% slice_max(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
+    best_lambda_brier <- aggregated_metrics_Brier %>% filter(.metric=="brier_class") %>% ungroup() %>% slice_min(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
+    best_lambda_pg <- aggregated_metrics_PG %>% ungroup() %>% slice_max(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
     
     lambda_sd_auc <- sd(unlist(
-      full_metrics %>% filter(.metric=="roc_auc") %>%
+      full_metrics_AUC %>% filter(.metric=="roc_auc") %>%
         group_by(fold) %>%
         slice_max(.estimate) %>%
         slice_head() %>%
@@ -782,7 +844,7 @@ for(dataset in datasets) {
     ))
     
     lambda_sd_brier <- sd(unlist(
-      full_metrics %>% filter(.metric=="brier_class") %>%
+      full_metrics_Brier %>% filter(.metric=="brier_class") %>%
         group_by(fold) %>%
         slice_min(.estimate) %>%
         slice_head() %>%
@@ -791,7 +853,7 @@ for(dataset in datasets) {
     ))
     
     lambda_sd_pg <- sd(unlist(
-      full_metrics_pg %>% 
+      full_metrics_PG %>% 
         group_by(fold) %>%
         slice_max(partial_gini) %>%
         slice_head() %>%
