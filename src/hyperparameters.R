@@ -32,12 +32,6 @@ hyperparameters_CTREE <- list(
 
 #RF
 # Lessmann 2015
-hyperparameters_RF <- list(
-  mtry = sqrt(ncol(train_bake_x)*c(0.1,0.25,0.5,1,2,4)),
-  splitrule = "gini",
-  min.node.size = 1
-)
-
 hyperparameters_RF_tidy <- expand.grid(list(
   trees = c(100,250,500,750,1000),
   mtry = sqrt(ncol(train_bake_x)*c(0.1,0.25,0.5,1,2,4)),
@@ -45,25 +39,20 @@ hyperparameters_RF_tidy <- expand.grid(list(
 ))
 
 #XGB
-# B2Boost  and Lessmann
-hyperparameters_XGB <- list(
-  nrounds = c(10,50,100,250,500), #L
-  eta = c(0.01, 0.1, 0.2, 0.5), #B
-  gamma = c(0.5, 1, 1.5, 2), #B
-  max_depth = 6, #default
-  colsample_bytree = 1, #default
-  min_child_weight = 1, #default
-  subsample = 1 #default
+#DL for CS
+hyperparameters_XGB_tidy <- crossing(
+  trees = c(50,100, 150), #L
+  learn_rate = c(0.3, 0.4), #B
+  tree_depth = c(1,2,3), #default
+  mtry = round(ncol(train_bake_x)*c(0.6,0.8)), #default
+  sample_size = c(0.5, 0.75, 1)
 )
 
-hyperparameters_XGB_tidy <- crossing(
-  trees = c(10,50,100,250,500,1000), #L
-  learn_rate = c(0.01, 0.1, 0.2, 0.5), #B
-  loss_reduction = c(0.5, 1, 1.5, 2), #B
-  tree_depth = 6 #default
-  #colsample_bytree = 1, #default
-  #min_child_weight = 1, #default
-  #subsample = 1 #default
+hyperparameters_LGBM_tidy <- crossing(
+  trees = c(50,100, 150), #L
+  learn_rate = c(0.3, 0.4), #B
+  tree_depth = c(1,2,3),
+  mtry = round(ncol(train_bake_x)*c(0.6,0.8))
 )
 
 
@@ -71,12 +60,12 @@ hyperparameters_XGB_tidy <- crossing(
 #LightGBM eventueel
 
 preGrid <- getModelInfo("pre")[[1]]$grid( 
-  maxdepth = c(2,3),
-  learnrate = c(0.005, .01, .05, .1),
+  maxdepth = c(1,2,3),
+  learnrate = c(.3, .5),
   penalty.par.val = c("lambda.1se"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
   sampfrac = 1,
-  use.grad = TRUE
-  #mtry = sqrt(ncol(train_bake_x)*c(0.1,0.25,0.5,1,2,4))
+  use.grad = TRUE,
+  mtry = round(sqrt(ncol(train_bake_x)*c(0.1,0.25,0.5,1,2,4)))
 ) #adaptive lasso with ridge weights
 # !! nlambda by default 100 models 
 

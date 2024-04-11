@@ -411,7 +411,9 @@ for(dataset in datasets) {
         trees = tune(),
         tree_depth = tune(),
         learn_rate = tune(),
-        loss_reduction = tune()
+        colsample_bytree = tune(),
+        sample_size = tune()
+        
       ) %>%
       set_engine("xgboost")
     
@@ -478,7 +480,7 @@ for(dataset in datasets) {
     lgbm_tuned <- tune::tune_grid(
       object = lgbm_wf,
       resamples = inner_folds, 
-      grid = hyperparameters_XGB_tidy, #same setting as xgboost
+      grid = hyperparameters_LGBM_tidy, 
       metrics = metrics,
       control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
     )
@@ -1112,6 +1114,10 @@ for(dataset in datasets) {
     pg <- final_SRE_fit_pg %>%
       collect_pg()
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
+    
+    
+    #MLP
+    
     
   
   }

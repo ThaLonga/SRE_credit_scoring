@@ -1,9 +1,35 @@
 library(pacman)
-p_load(tidyverse)
-
+p_load(tidyverse, knitr, rstatix)
+source("./src/data_loader.R")
+source("./src/results_processing_functions.R")
 loaded_results <- load_results()
 #loaded_results <- loaded_results[-c(4:6)]
 avg_results <- list()
+
+combined_results_AUC <- bind_rows(loaded_results$AC_AUC, loaded_results$GC_AUC, loaded_results$HMEQ_AUC, loaded_results$TH02_AUC) %>% select(-...1)
+combined_results_Brier <- bind_rows(loaded_results$AC_BRIER, loaded_results$GC_BRIER, loaded_results$HMEQ_BRIER, loaded_results$TH02_BRIER) %>% select(-...1)
+combined_results_PG <- bind_rows(loaded_results$AC_PG, loaded_results$GC_PG, loaded_results$HMEQ_PG, loaded_results$TH02_PG) %>% select(-...1)
+
+# AvgRank calculation
+
+average_ranks_AUC <- avg_ranks(combined_results_AUC)
+average_ranks_Brier <- avg_ranks(combined_results_Brier, direction = "min")
+average_ranks_PG <- avg_ranks(combined_results_PG)
+
+avg_ranks_summarised_AUC <- avg_ranks_summarised(average_ranks_AUC)
+avg_ranks_summarised_Brier <- avg_ranks_summarised(average_ranks_Brier)
+avg_ranks_summarised_PG <- avg_ranks_summarised(average_ranks_PG)
+
+avg_ranks_summarised_AUC_latex<- xtable(avg_ranks_summarised_AUC)
+avg_ranks_summarised_Brier_latex<- xtable(avg_ranks_summarised_Brier)
+avg_ranks_summarised_PG_latex<- xtable(avg_ranks_summarised_PG)
+
+#kable(avg_ranks_summarised_AUC, "latex", booktabs = T)
+
+# Friedman tes
+average_ranks_AUC%>%filter(dataset != "TH02") %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
+
+
 for(name in names(loaded_results)) {
   # calculate means
   avg_results[[name]] <- loaded_results[[name]] %>%
