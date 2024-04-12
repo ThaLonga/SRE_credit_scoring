@@ -110,14 +110,27 @@ select_best_pg_SRE <- function(.data) {
 select_best_pg_XGB <- function(.data) {
   suppressMessages({.data %>%
       collect_predictions(summarize = TRUE) %>%
-      group_by(trees, tree_depth, learn_rate, loss_reduction, .config) %>%
+      group_by(trees, tree_depth, learn_rate, mtry, sample_size, .config) %>%
       summarise(partial_gini = partialGini(.pred_X1, label)) %>%
-      group_by(trees, tree_depth, learn_rate, loss_reduction, .config) %>%
+      group_by(trees, tree_depth, learn_rate, mtry, sample_size, .config) %>%
       summarise(avg_pg = mean(partial_gini)) %>%
       ungroup() %>%
       slice_max(avg_pg) %>%
       slice_head() %>%
-      dplyr::select(trees, tree_depth, learn_rate, loss_reduction, .config)})
+      dplyr::select(trees, tree_depth, learn_rate, mtry, sample_size, .config)})
+}
+
+select_best_pg_LGBM <- function(.data) {
+  suppressMessages({.data %>%
+      collect_predictions(summarize = TRUE) %>%
+      group_by(trees, tree_depth, learn_rate, mtry, .config) %>%
+      summarise(partial_gini = partialGini(.pred_X1, label)) %>%
+      group_by(trees, tree_depth, learn_rate, mtry, .config) %>%
+      summarise(avg_pg = mean(partial_gini)) %>%
+      ungroup() %>%
+      slice_max(avg_pg) %>%
+      slice_head() %>%
+      dplyr::select(trees, tree_depth, learn_rate, mtry, .config)})
 }
 
 select_best_pg_RF <- function(.data) {
@@ -157,25 +170,29 @@ collect_pg <- function(.data) {
 #to fit rules from pre package on dataframe that is baked with TREE_recipe
 #obtain by applying "$rules$description" on model
 fit_rules <- function(dataframe, rules) {
-  # Split the rule into individual conditions
-  conditions <- strsplit(rules, " & ")
+  if(!is.null(rules)) {
+    # Split the rule into individual conditions
+    conditions <- strsplit(rules, " & ")
 
-  # Add 'train$' before each condition
-  conditions_with_dataframe <- lapply(conditions, function(x) paste(deparse(substitute(dataframe)),"$", x, sep = ""))
-  
-  # Combine the conditions with ' & ' separator
-  rule_list <- lapply(conditions_with_dataframe, function (x) parse(text = paste(x, collapse = " & ")))
-  
-  train_rules <- dataframe
-  for (i in seq_along(rule_list)) {
-    tryCatch({
-      rule_result <- eval(rule_list[[i]])
-      column_name <- paste0("rule_", i)
-      train_rules[column_name] <- rule_result
-    }, error = function(e) {
-      warning(sprintf("Rule %d failed with error: %s", i, e$message))
-      NA
-    })
+    # Add 'train$' before each condition
+    conditions_with_dataframe <- lapply(conditions, function(x) paste(deparse(substitute(dataframe)),"$", x, sep = ""))
+    
+    # Combine the conditions with ' & ' separator
+    rule_list <- lapply(conditions_with_dataframe, function (x) parse(text = paste(x, collapse = " & ")))
+    
+    train_rules <- dataframe
+    for (i in seq_along(rule_list)) {
+      tryCatch({
+        rule_result <- eval(rule_list[[i]])
+        column_name <- paste0("rule_", i)
+        train_rules[column_name] <- rule_result
+      }, error = function(e) {
+        warning(sprintf("Rule %d failed with error: %s", i, e$message))
+        NA
+      })
+    }
+    return(train_rules)
+  } else {
+    warning("No rules to fit")
   }
-  return(train_rules)
 }

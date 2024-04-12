@@ -35,7 +35,7 @@ metric_results <- data.frame(
   stringsAsFactors = FALSE
 )
 
-dataset_counter = 2
+dataset_counter = 1
 
 for(dataset in datasets) {
   
@@ -411,9 +411,8 @@ for(dataset in datasets) {
         trees = tune(),
         tree_depth = tune(),
         learn_rate = tune(),
-        colsample_bytree = tune(),
-        sample_size = tune()
-        
+        sample_size = tune(),
+        mtry = tune()
       ) %>%
       set_engine("xgboost")
     
@@ -468,13 +467,13 @@ for(dataset in datasets) {
         trees = tune(),
         tree_depth = tune(),
         learn_rate = tune(),
-        loss_reduction = tune()
+        mtry = tune()
       ) %>%
       set_engine("lightgbm") %>%
       translate()
     
     lgbm_wf <- workflow() %>%
-      add_recipe(TREE_recipe) %>%
+      add_recipe(XGB_recipe) %>%
       add_model(lgbm_model)
     
     lgbm_tuned <- tune::tune_grid(
@@ -493,7 +492,7 @@ for(dataset in datasets) {
     final_lgbm_wf_brier <- lgbm_wf %>% finalize_workflow(best_booster_brier)
     final_lgbm_fit_brier <- final_lgbm_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
     
-    best_model_pg <- lgbm_tuned %>% select_best_pg_XGB()
+    best_model_pg <- lgbm_tuned %>% select_best_pg_LGBM()
     final_lgbm_wf_pg <- lgbm_wf %>% finalize_workflow(best_model_pg)
     final_lgbm_fit_pg <- final_lgbm_wf_pg %>% last_fit(folds$splits[[i]], metrics = metrics)
     
@@ -701,24 +700,36 @@ for(dataset in datasets) {
         fitted_smooths_test[, j] <- fitted_values_test 
       }
       
-      SRE_train_rules_AUC <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
-      SRE_test_rules_AUC <- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
-      
-      SRE_train_rules_Brier <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model_Brier$finalModel$rules$description))$rules)
-      SRE_test_rules_Brier<- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model_Brier$finalModel$rules$description))$rules)
-      
-      SRE_train_rules_PG <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model_PG$finalModel$rules$description))$rules)
-      SRE_test_rules_PG <- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model_PG$finalModel$rules$description))$rules)
-      
-      SRE_train_AUC <- cbind(SRE_train_rules_AUC, fitted_smooths_train)
-      SRE_test_AUC <- cbind(SRE_test_rules_AUC, fitted_smooths_test)
-      
-      SRE_train_Brier <- cbind(SRE_train_rules_Brier, fitted_smooths_train)
-      SRE_test_Brier <- cbind(SRE_test_rules_Brier, fitted_smooths_test)
-      
-      SRE_train_PG <- cbind(SRE_train_rules_PG, fitted_smooths_train)
-      SRE_test_PG <- cbind(SRE_test_rules_PG, fitted_smooths_test)
-      
+      if(!is.null(RE_model$finalModel$rules)) {
+        SRE_train_rules_AUC <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
+        SRE_test_rules_AUC <- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
+        
+        SRE_train_AUC <- cbind(SRE_train_rules_AUC, fitted_smooths_train)
+        SRE_test_AUC <- cbind(SRE_test_rules_AUC, fitted_smooths_test)
+      } else {
+        SRE_train_AUC <- cbind(inner_train_bake, fitted_smooths_train)
+        SRE_test_AUC <- cbind(inner_test_bake, fitted_smooths_test)
+      }
+      if(!is.null(RE_model_Brier$finalModel$rules)) {
+        SRE_train_rules_Brier <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model_Brier$finalModel$rules$description))$rules)
+        SRE_test_rules_Brier<- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model_Brier$finalModel$rules$description))$rules)
+        
+        SRE_train_Brier <- cbind(SRE_train_rules_Brier, fitted_smooths_train)
+        SRE_test_Brier <- cbind(SRE_test_rules_Brier, fitted_smooths_test)
+      } else {
+        SRE_train_Brier <- cbind(inner_train_bake, fitted_smooths_train)
+        SRE_test_Brier <- cbind(inner_test_bake, fitted_smooths_test)
+      }
+      if(!is.null(RE_model_PG$finalModel$rules)) {
+        SRE_train_rules_PG <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model_PG$finalModel$rules$description))$rules)
+        SRE_test_rules_PG <- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model_PG$finalModel$rules$description))$rules)
+        
+        SRE_train_PG <- cbind(SRE_train_rules_PG, fitted_smooths_train)
+        SRE_test_PG <- cbind(SRE_test_rules_PG, fitted_smooths_test)
+      } else {
+        SRE_train_PG <- cbind(inner_train_bake, fitted_smooths_train)
+        SRE_test_PG <- cbind(inner_test_bake, fitted_smooths_test)
+      }
       
       winsorizable_AUC <- get_splineworthy_columns(SRE_train_AUC)
       winsorizable_Brier <- get_splineworthy_columns(SRE_train_Brier)
@@ -820,7 +831,7 @@ for(dataset in datasets) {
         summarise(partial_gini = partialGini(.pred_X1, label)))
       metrics_SRE_PG$fold <- rep(k, nrow(metrics_SRE_PG))
       
-      full_metrics_PG <- rbind(full_metrics_pg, metrics_SRE_pg)
+      full_metrics_PG <- rbind(full_metrics_PG, metrics_SRE_PG)
     }
     
     print("hyperparameters found")
