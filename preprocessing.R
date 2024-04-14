@@ -85,3 +85,14 @@ thomas$DHVAL_flag <- as.factor(ifelse(thomas$DHVAL == 0, 1, 0))
 thomas$DMORT_flag <- as.factor(ifelse(thomas$DMORT == 0, 1, 0))
 
 save(thomas, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/thomas.Rda")
+
+#LC
+LC <- read_delim("data/LC/LC.csv", delim = ",", escape_double = FALSE, trim_ws = TRUE, col_names = FALSE)
+
+LC <- LC %>%
+  mutate_at(vars(X2, X11), as.factor) %>%
+  rename("label" = "X11") %>%
+  mutate(label = factor(label, 
+                        labels = make.names(levels(label))))
+
+save(LC, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/LC.Rda")

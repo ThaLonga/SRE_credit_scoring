@@ -21,7 +21,7 @@ metric = "AUCROC"
 nr_repeats = 5
 outerfolds = 2
 nr_innerfolds = 5
-dataset_vector = c("GC", "AC", "HMEQ", "TH02")
+dataset_vector = c("GC", "AC", "HMEQ", "TH02", "LC")
 
 ctrl <- trainControl(method = "cv", number = nr_innerfolds, classProbs = TRUE, summaryFunction = BigSummary, search = "grid", allowParallel = TRUE)
 metrics = metric_set(roc_auc, brier_class)
@@ -895,32 +895,83 @@ for(dataset in datasets) {
       fitted_smooths_test[, j] <- fitted_values_test 
     }
     
-    SRE_train_rules <- fit_rules(train_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
-    SRE_test_rules <- fit_rules(test_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
+    if(!is.null(RE_model$finalModel$rules)) {
+      SRE_train_rules_AUC <- fit_rules(train_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
+      SRE_test_rules_AUC <- fit_rules(test_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
+    } else {
+      SRE_train_rules_AUC <- train_bake
+      SRE_test_rules_AUC <- test_bake
+    }
+
+    if(!is.null(RE_model_Brier$finalModel$rules)) {
+      SRE_train_rules_Brier <- fit_rules(train_bake, drop_na(tibble(rules = RE_model_Brier$finalModel$rules$description))$rules)
+      SRE_test_rules_Brier <- fit_rules(test_bake, drop_na(tibble(rules = RE_model_Brier$finalModel$rules$description))$rules)
+    } else {
+      SRE_train_rules_Brier <- train_bake
+      SRE_test_rules_Brier <- test_bake
+    }
     
-    SRE_train <- cbind(SRE_train_rules, fitted_smooths_train)
-    SRE_test <- cbind(SRE_test_rules, fitted_smooths_test)
+    if(!is.null(RE_model_PG$finalModel$rules)) {
+      SRE_train_rules_PG <- fit_rules(train_bake, drop_na(tibble(rules = RE_model_PG$finalModel$rules$description))$rules)
+      SRE_test_rules_PG <- fit_rules(test_bake, drop_na(tibble(rules = RE_model_PG$finalModel$rules$description))$rules)
+    } else {
+      SRE_train_rules_PG <- train_bake
+      SRE_test_rules_PG <- test_bake
+    }
     
     
-    winsorizable <- get_splineworthy_columns(SRE_train)
+    SRE_train_AUC <- cbind(SRE_train_rules_AUC, fitted_smooths_train)
+    SRE_train_Brier <- cbind(SRE_train_rules_Brier, fitted_smooths_train)
+    SRE_train_PG <- cbind(SRE_train_rules_PG, fitted_smooths_train)
+    
+    SRE_test_AUC <- cbind(SRE_test_rules_AUC, fitted_smooths_test)
+    SRE_test_Brier <- cbind(SRE_test_rules_Brier, fitted_smooths_test)
+    SRE_test_PG <- cbind(SRE_test_rules_PG, fitted_smooths_test)
+    
+    #change to seperate for metrics
+    winsorizable_AUC <- get_splineworthy_columns(SRE_train_AUC)
+    winsorizable_Brier <- get_splineworthy_columns(SRE_train_Brier)
+    winsorizable_PG <- get_splineworthy_columns(SRE_train_PG)
     
     
     indices <- list(
-      list(analysis = 1:nrow(SRE_train), assessment = (nrow(SRE_train)+1):(nrow(SRE_train)+nrow(SRE_test)))
+      list(analysis = 1:nrow(SRE_train_AUC), assessment = (nrow(SRE_train_AUC)+1):(nrow(SRE_train_AUC)+nrow(SRE_test_AUC)))
     )
     
-    splits <- lapply(indices, make_splits, data = rbind(SRE_train, SRE_test))
+    splits_AUC <- lapply(indices, make_splits, data = rbind(SRE_train_AUC, SRE_test_AUC))
+    splits_Brier <- lapply(indices, make_splits, data = rbind(SRE_train_Brier, SRE_test_Brier))
+    splits_PG <- lapply(indices, make_splits, data = rbind(SRE_train_PG, SRE_test_PG))
     
-    SRE_split <- manual_rset(splits, c("Split SRE"))
+    SRE_split_AUC <- manual_rset(splits_AUC, c("Split SRE"))
+    SRE_split_Brier <- manual_rset(splits_Brier, c("Split SRE"))
+    SRE_split_PG <- manual_rset(splits_PG, c("Split SRE"))
     
-    normalizable <- colnames(training(SRE_split$splits[[1]])[unlist(lapply(training(SRE_split$splits[[1]]), function(x) n_distinct(x)>2))])
+    normalizable_AUC <- colnames(training(SRE_split_AUC$splits[[1]])[unlist(lapply(training(SRE_split_AUC$splits[[1]]), function(x) n_distinct(x)>2))])
+    normalizable_Brier <- colnames(training(SRE_split_Brier$splits[[1]])[unlist(lapply(training(SRE_split_Brier$splits[[1]]), function(x) n_distinct(x)>2))])
+    normalizable_PG <- colnames(training(SRE_split_PG$splits[[1]])[unlist(lapply(training(SRE_split_PG$splits[[1]]), function(x) n_distinct(x)>2))])
     
-    SRE_recipe <- recipe(label~., data = training(SRE_split$splits[[1]])) %>%
-      step_hai_winsorized_truncate(all_of(names(!!training(SRE_split$splits[[1]]))[!!winsorizable]), fraction = 0.025) %>%
-      step_rm(all_of(names(!!training(SRE_split$splits[[1]]))[!!winsorizable])) %>%
+    SRE_recipe_AUC <- recipe(label~., data = training(SRE_split_AUC$splits[[1]])) %>%
+      step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_AUC$splits[[1]]))[!!winsorizable_AUC]), fraction = 0.025) %>%
+      step_rm(all_of(names(!!training(SRE_split_AUC$splits[[1]]))[!!winsorizable_AUC])) %>%
       step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
       step_mutate(across(where(is.logical), as.integer)) %>%
-      step_normalize(all_of(setdiff(!!normalizable, colnames(!!training(SRE_split$splits[[1]])[!!winsorizable])))) %>%
+      step_normalize(all_of(setdiff(!!normalizable_AUC, colnames(!!training(SRE_split_AUC$splits[[1]])[!!winsorizable_AUC])))) %>%
+      step_zv()
+    
+    SRE_recipe_Brier <- recipe(label~., data = training(SRE_split_Brier$splits[[1]])) %>%
+      step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_Brier$splits[[1]]))[!!winsorizable_Brier]), fraction = 0.025) %>%
+      step_rm(all_of(names(!!training(SRE_split_Brier$splits[[1]]))[!!winsorizable_Brier])) %>%
+      step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
+      step_mutate(across(where(is.logical), as.integer)) %>%
+      step_normalize(all_of(setdiff(!!normalizable_Brier, colnames(!!training(SRE_split_Brier$splits[[1]])[!!winsorizable_Brier])))) %>%
+      step_zv()
+    
+    SRE_recipe_PG <- recipe(label~., data = training(SRE_split_PG$splits[[1]])) %>%
+      step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_PG$splits[[1]]))[!!winsorizable_PG]), fraction = 0.025) %>%
+      step_rm(all_of(names(!!training(SRE_split_PG$splits[[1]]))[!!winsorizable_PG])) %>%
+      step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
+      step_mutate(across(where(is.logical), as.integer)) %>%
+      step_normalize(all_of(setdiff(!!normalizable_PG, colnames(!!training(SRE_split_PG$splits[[1]])[!!winsorizable_PG])))) %>%
       step_zv()
     
     
@@ -1073,7 +1124,7 @@ for(dataset in datasets) {
     
     SRE_wf_auc <- workflow() %>%
       #add_formula(label~.) %>%
-      add_recipe(SRE_recipe) %>%
+      add_recipe(SRE_recipe_AUC) %>%
       add_model(SRE_model_auc)
     
     SRE_model_brier <- 
@@ -1086,7 +1137,7 @@ for(dataset in datasets) {
     
     SRE_wf_brier <- workflow() %>%
       #add_formula(label~.) %>%
-      add_recipe(SRE_recipe) %>%
+      add_recipe(SRE_recipe_Brier) %>%
       add_model(SRE_model_brier)    
     
     SRE_model_pg <- 
@@ -1099,14 +1150,14 @@ for(dataset in datasets) {
     
     SRE_wf_pg <- workflow() %>%
       #add_formula(label~.) %>%
-      add_recipe(SRE_recipe) %>%
+      add_recipe(SRE_recipe_PG) %>%
       add_model(SRE_model_pg)    
 
-    final_SRE_fit_auc <- SRE_wf_auc %>% last_fit(SRE_split$splits[[1]], metrics = metrics)
+    final_SRE_fit_auc <- SRE_wf_auc %>% last_fit(SRE_split_AUC$splits[[1]], metrics = metrics)
     
-    final_SRE_fit_brier <- SRE_wf_brier %>% last_fit(SRE_split$splits[[1]], metrics = metrics)
+    final_SRE_fit_brier <- SRE_wf_brier %>% last_fit(SRE_split_Brier$splits[[1]], metrics = metrics)
     
-    final_SRE_fit_pg <- SRE_wf_pg %>% last_fit(SRE_split$splits[[1]], metrics = metrics)
+    final_SRE_fit_pg <- SRE_wf_pg %>% last_fit(SRE_split_PG$splits[[1]], metrics = metrics)
     
     
     

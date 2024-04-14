@@ -27,7 +27,9 @@ avg_ranks_summarised_PG_latex<- xtable(avg_ranks_summarised_PG)
 #kable(avg_ranks_summarised_AUC, "latex", booktabs = T)
 
 # Friedman tes
-average_ranks_AUC%>%filter(dataset != "TH02") %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
+friedman_AUC <- average_ranks_AUC%>%filter(algorithm != "TH02") %>% convert_as_factor(dataset, algorithm) %>% select(-average_metric) %>% friedman_test(average_rank ~ algorithm|dataset)
+friedman_Brier <- average_ranks_Brier%>%filter(dataset != "TH02") %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
+friedman_PG <- average_ranks_PG%>%filter(dataset != "TH02") %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
 
 
 for(name in names(loaded_results)) {
