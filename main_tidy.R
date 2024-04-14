@@ -21,7 +21,7 @@ metric = "AUCROC"
 nr_repeats = 5
 outerfolds = 2
 nr_innerfolds = 5
-dataset_vector = c("GC", "AC", "HMEQ", "TH02", "LC")
+dataset_vector = c("GC", "AC", "HMEQ", "TH02", "LC", "JC")
 
 ctrl <- trainControl(method = "cv", number = nr_innerfolds, classProbs = TRUE, summaryFunction = BigSummary, search = "grid", allowParallel = TRUE)
 metrics = metric_set(roc_auc, brier_class)

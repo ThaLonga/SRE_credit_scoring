@@ -6,9 +6,9 @@ loaded_results <- load_results()
 #loaded_results <- loaded_results[-c(4:6)]
 avg_results <- list()
 
-combined_results_AUC <- bind_rows(loaded_results$AC_AUC, loaded_results$GC_AUC, loaded_results$HMEQ_AUC, loaded_results$TH02_AUC) %>% select(-...1)
-combined_results_Brier <- bind_rows(loaded_results$AC_BRIER, loaded_results$GC_BRIER, loaded_results$HMEQ_BRIER, loaded_results$TH02_BRIER) %>% select(-...1)
-combined_results_PG <- bind_rows(loaded_results$AC_PG, loaded_results$GC_PG, loaded_results$HMEQ_PG, loaded_results$TH02_PG) %>% select(-...1)
+combined_results_AUC <- bind_rows(loaded_results$AC_AUC, loaded_results$GC_AUC, loaded_results$HMEQ_AUC, loaded_results$TH02_AUC, loaded_results$LC_AUC) %>% select(-...1)
+combined_results_Brier <- bind_rows(loaded_results$AC_BRIER, loaded_results$GC_BRIER, loaded_results$HMEQ_BRIER, loaded_results$LC_BRIER) %>% select(-...1)
+combined_results_PG <- bind_rows(loaded_results$AC_PG, loaded_results$GC_PG, loaded_results$HMEQ_PG, loaded_results$LC_PG) %>% select(-...1)
 
 # AvgRank calculation
 
@@ -27,9 +27,9 @@ avg_ranks_summarised_PG_latex<- xtable(avg_ranks_summarised_PG)
 #kable(avg_ranks_summarised_AUC, "latex", booktabs = T)
 
 # Friedman tes
-friedman_AUC <- average_ranks_AUC%>%filter(algorithm != "TH02") %>% convert_as_factor(dataset, algorithm) %>% select(-average_metric) %>% friedman_test(average_rank ~ algorithm|dataset)
-friedman_Brier <- average_ranks_Brier%>%filter(dataset != "TH02") %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
-friedman_PG <- average_ranks_PG%>%filter(dataset != "TH02") %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
+friedman_AUC <- average_ranks_AUC %>% convert_as_factor(dataset, algorithm) %>% select(-average_metric) %>% friedman_test(average_rank ~ algorithm|dataset)
+friedman_Brier <- average_ranks_Brier %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
+friedman_PG <- average_ranks_PG %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
 
 
 for(name in names(loaded_results)) {
