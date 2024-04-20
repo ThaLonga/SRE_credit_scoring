@@ -4,7 +4,6 @@ source("./src/data_loader.R")
 source("./src/results_processing_functions.R")
 loaded_results <- load_results()
 #loaded_results <- loaded_results[-c(4:6)]
-avg_results <- list()
 
 combined_results_AUC <- bind_rows(loaded_results$AC_AUC, loaded_results$GC_AUC, loaded_results$HMEQ_AUC, loaded_results$TH02_AUC, loaded_results$LC_AUC) %>% select(-...1)
 combined_results_Brier <- bind_rows(loaded_results$AC_BRIER, loaded_results$GC_BRIER, loaded_results$HMEQ_BRIER, loaded_results$LC_BRIER) %>% select(-...1)
@@ -31,6 +30,11 @@ friedman_AUC <- average_ranks_AUC %>% convert_as_factor(dataset, algorithm) %>% 
 friedman_Brier <- average_ranks_Brier %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
 friedman_PG <- average_ranks_PG %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
 
+
+# Bayesian signed rank test (Benavoli et al., 2017)
+combined_results_AUC$group <- paste(combined_results_AUC$dataset, combined_results_AUC$nr_fold)
+AUC_prep_rank <- combined_results_AUC %>% select(group, algorithm, metric)
+AUC_prep_rank <- avg_ranks_bayes(AUC_prep_rank) %>% rename("id" = group, "model" = algorithm, "statistic" = rank) %>% select(-metric)
 
 for(name in names(loaded_results)) {
   # calculate means
