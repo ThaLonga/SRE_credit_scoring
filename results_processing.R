@@ -1,5 +1,5 @@
 library(pacman)
-p_load(tidyverse, knitr, rstatix)
+p_load(tidyverse, knitr, rstatix, tidyposterior)
 source("./src/data_loader.R")
 source("./src/results_processing_functions.R")
 loaded_results <- load_results()
