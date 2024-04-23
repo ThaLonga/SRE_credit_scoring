@@ -683,7 +683,7 @@ for(dataset in datasets) {
         add_recipe(GAM_recipe) %>%
         add_model(GAM_model, formula = formula)
       
-      final_GAM_fit <- GAM_wf %>% last_fit(folds$splits[[i]], metrics = metrics)
+      final_GAM_fit_inner <- GAM_wf %>% last_fit(folds$splits[[i]], metrics = metrics)
       
       
       smooth_terms <- grep("s\\(", unlist(str_split(as.character(formula), " \\+ ")), value = TRUE)
@@ -694,9 +694,9 @@ for(dataset in datasets) {
       colnames(fitted_smooths_test) <- smooth_terms
       for (j in seq_along(smooth_terms)) {
         current_smooth <- smooth_terms[j]
-        fitted_values_train <- predict(extract_fit_engine(final_GAM_fit), inner_train_bake, type = "terms")[, current_smooth]
+        fitted_values_train <- predict(extract_fit_engine(final_GAM_fit_inner), inner_train_bake, type = "terms")[, current_smooth]
         fitted_smooths_train[, j] <- fitted_values_train
-        fitted_values_test <- predict(extract_fit_engine(final_GAM_fit), inner_test_bake, type = "terms")[, current_smooth]
+        fitted_values_test <- predict(extract_fit_engine(final_GAM_fit_inner), inner_test_bake, type = "terms")[, current_smooth]
         fitted_smooths_test[, j] <- fitted_values_test 
       }
       
