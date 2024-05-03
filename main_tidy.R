@@ -646,8 +646,8 @@ for(dataset in datasets) {
     #####
     
     
-    
-    #SRE loop
+    ####### 
+    # inner SRE loop for hyperparameter tuning (glmnet)
     
     full_metrics_AUC <- list()
     full_metrics_Brier <- list()
@@ -655,13 +655,18 @@ for(dataset in datasets) {
     
     for(k in 1:nrow(inner_folds)) {
       cat("SRE inner fold", k, "/ 5 \n")
+      ####### 
+      # Data is split in training and test, preprocessing is applied
+      
       inner_train <- analysis(inner_folds$splits[[k]])
       inner_test <- assessment(inner_folds$splits[[k]])
       
       inner_train_bake <- XGB_recipe %>% prep(inner_train) %>% bake(inner_train)
       inner_test_bake <- XGB_recipe %>% prep(inner_train) %>% bake(inner_test)
       
-      #fit GAM
+      ####### 
+      # Fit GAM to extract splines only on numeric features with number of values >6
+      
       inner_train_gam_processed <- GAM_recipe%>%prep(inner_train)%>%bake(inner_train)
       
       smooth_vars = colnames(inner_train_gam_processed%>%dplyr::select(-label))[get_splineworthy_columns(inner_train_gam_processed)]
@@ -686,8 +691,8 @@ for(dataset in datasets) {
       final_GAM_fit_inner <- GAM_wf %>% last_fit(folds$splits[[i]], metrics = metrics)
       
       
-      smooth_terms <- grep("s\\(", unlist(str_split(as.character(formula), " \\+ ")), value = TRUE)
       # Extract and fitted values for each smooth term
+      smooth_terms <- grep("s\\(", unlist(str_split(as.character(formula), " \\+ ")), value = TRUE)
       fitted_smooths_train <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(inner_train_bake)))
       fitted_smooths_test <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(inner_test_bake)))
       colnames(fitted_smooths_train) <- smooth_terms
@@ -699,6 +704,9 @@ for(dataset in datasets) {
         fitted_values_test <- predict(extract_fit_engine(final_GAM_fit_inner), inner_test_bake, type = "terms")[, current_smooth]
         fitted_smooths_test[, j] <- fitted_values_test 
       }
+      
+      ####### 
+      # Fit rules from RE_models, seperate for AUC, Brier, PG
       
       if(!is.null(RE_model$finalModel$rules)) {
         SRE_train_rules_AUC <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
@@ -731,11 +739,14 @@ for(dataset in datasets) {
         SRE_test_PG <- cbind(inner_test_bake, fitted_smooths_test)
       }
       
+      ####### 
+      # Again, only winsorize numeric features with more than 6 values
       winsorizable_AUC <- get_splineworthy_columns(SRE_train_AUC)
       winsorizable_Brier <- get_splineworthy_columns(SRE_train_Brier)
       winsorizable_PG <- get_splineworthy_columns(SRE_train_PG)
       
-      
+      #######
+      # Manually create Rsample splits again, now with the splines and rules added
       indices <- list(
         list(analysis = 1:nrow(SRE_train_AUC), assessment = (nrow(SRE_train_AUC)+1):(nrow(SRE_train_AUC)+nrow(SRE_test_AUC)))
       )
@@ -746,6 +757,8 @@ for(dataset in datasets) {
       SRE_split_Brier <- manual_rset(splits_Brier, c("Split SRE"))
       SRE_split_PG <- manual_rset(splits_PG, c("Split SRE"))
       
+      ####### 
+      # Create recipes, for AUC, Brier and PG
       normalizable_AUC <- colnames(training(SRE_split_AUC$splits[[1]])[unlist(lapply(training(SRE_split_AUC$splits[[1]]), function(x) n_distinct(x)>2))])
       normalizable_Brier <- colnames(training(SRE_split_Brier$splits[[1]])[unlist(lapply(training(SRE_split_Brier$splits[[1]]), function(x) n_distinct(x)>2))])
       normalizable_PG <- colnames(training(SRE_split_PG$splits[[1]])[unlist(lapply(training(SRE_split_PG$splits[[1]]), function(x) n_distinct(x)>2))])
@@ -774,7 +787,8 @@ for(dataset in datasets) {
         step_normalize(all_of(setdiff(!!normalizable_PG, colnames(!!training(SRE_split_PG$splits[[1]])[!!winsorizable_PG])))) %>%
         step_zv()
       
-      #regular lasso
+      ####### 
+      # Fit regular lasso for AUC, Brier, PG
       SRE_model <- 
         parsnip::logistic_reg(
           mode = "classification",
@@ -784,15 +798,12 @@ for(dataset in datasets) {
         set_engine("glmnet")
       
       SRE_wf_AUC <- workflow() %>%
-        #add_formula(label~.) %>%
         add_recipe(SRE_recipe_AUC) %>%
         add_model(SRE_model)
       SRE_wf_Brier <- workflow() %>%
-        #add_formula(label~.) %>%
         add_recipe(SRE_recipe_Brier) %>%
         add_model(SRE_model)
       SRE_wf_PG <- workflow() %>%
-        #add_formula(label~.) %>%
         add_recipe(SRE_recipe_PG) %>%
         add_model(SRE_model)
       
@@ -836,6 +847,8 @@ for(dataset in datasets) {
     
     print("hyperparameters found")
     
+    ####### 
+    # Hyperparameter extraction, we use lambda.1se  = lambda.min + 1se
     aggregated_metrics_AUC <- full_metrics_AUC %>% group_by(penalty, .config, .metric) %>%
       summarise(mean_perf = mean(.estimate))
     aggregated_metrics_Brier <- full_metrics_Brier %>% group_by(penalty, .config, .metric) %>%
@@ -880,9 +893,10 @@ for(dataset in datasets) {
     lambda_1se_pg <- best_lambda_pg + lambda_sd_pg
     
 
-    #preprocessing full training and test set
+    ####### 
+    # Preprocessing on full training and test set
+    # Extract fitted values for each smooth term
     smooth_terms <- grep("s\\(", unlist(str_split(as.character(formula), " \\+ ")), value = TRUE)
-    # Extract and fitted values for each smooth term
     fitted_smooths_train <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(train_bake)))
     fitted_smooths_test <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(test_bake)))
     colnames(fitted_smooths_train) <- smooth_terms
@@ -895,6 +909,8 @@ for(dataset in datasets) {
       fitted_smooths_test[, j] <- fitted_values_test 
     }
     
+    ####### 
+    # Fit rules from RE_models, seperate for AUC, Brier, PG
     if(!is.null(RE_model$finalModel$rules)) {
       SRE_train_rules_AUC <- fit_rules(train_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
       SRE_test_rules_AUC <- fit_rules(test_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
@@ -928,12 +944,14 @@ for(dataset in datasets) {
     SRE_test_Brier <- cbind(SRE_test_rules_Brier, fitted_smooths_test)
     SRE_test_PG <- cbind(SRE_test_rules_PG, fitted_smooths_test)
     
-    #change to seperate for metrics
+    ####### 
+    # Only winsorize numeric features with more than 6 values
     winsorizable_AUC <- get_splineworthy_columns(SRE_train_AUC)
     winsorizable_Brier <- get_splineworthy_columns(SRE_train_Brier)
     winsorizable_PG <- get_splineworthy_columns(SRE_train_PG)
     
-    
+    #######
+    # Manually create Rsample splits again, now with the splines and rules added
     indices <- list(
       list(analysis = 1:nrow(SRE_train_AUC), assessment = (nrow(SRE_train_AUC)+1):(nrow(SRE_train_AUC)+nrow(SRE_test_AUC)))
     )
@@ -946,6 +964,8 @@ for(dataset in datasets) {
     SRE_split_Brier <- manual_rset(splits_Brier, c("Split SRE"))
     SRE_split_PG <- manual_rset(splits_PG, c("Split SRE"))
     
+    ####### 
+    # Create recipes, for AUC, Brier and PG
     normalizable_AUC <- colnames(training(SRE_split_AUC$splits[[1]])[unlist(lapply(training(SRE_split_AUC$splits[[1]]), function(x) n_distinct(x)>2))])
     normalizable_Brier <- colnames(training(SRE_split_Brier$splits[[1]])[unlist(lapply(training(SRE_split_Brier$splits[[1]]), function(x) n_distinct(x)>2))])
     normalizable_PG <- colnames(training(SRE_split_PG$splits[[1]])[unlist(lapply(training(SRE_split_PG$splits[[1]]), function(x) n_distinct(x)>2))])
@@ -973,147 +993,9 @@ for(dataset in datasets) {
       step_mutate(across(where(is.logical), as.integer)) %>%
       step_normalize(all_of(setdiff(!!normalizable_PG, colnames(!!training(SRE_split_PG$splits[[1]])[!!winsorizable_PG])))) %>%
       step_zv()
-    
-    
-    
-    
-#    print("SRE")
-#    #extract smooth term names for SRE
-#    smooth_terms <- grep("s\\(", unlist(str_split(as.character(formula), " \\+ ")), value = TRUE)
-#    # Extract and fitted values for each smooth term
-#    fitted_smooths_train <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(train_bake)))
-#    fitted_smooths_test <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(test_bake)))
-#    colnames(fitted_smooths_train) <- smooth_terms
-#    colnames(fitted_smooths_test) <- smooth_terms
-#    for (j in seq_along(smooth_terms)) {
-#      current_smooth <- smooth_terms[j]
-#      fitted_values_train <- predict(extract_fit_engine(final_GAM_fit),train_bake, type = "terms")[, current_smooth]
-#      fitted_smooths_train[, j] <- fitted_values_train
-#      fitted_values_test <- predict(extract_fit_engine(final_GAM_fit), test_bake, type = "terms")[, current_smooth]
-#      fitted_smooths_test[, j] <- fitted_values_test 
-#    }
-#    
-#    SRE_recipe <- recipe(label ~., data = train) %>%
-#      #step_impute_mean(all_numeric_predictors()) %>%
-#      #step_impute_mode(all_string_predictors()) %>%
-#      #step_impute_mode(all_factor_predictors()) %>%
-#      step_dummy(all_string_predictors()) %>%
-#      step_dummy(all_factor_predictors())
-#    
-#    
-#    SRE_train_rules <- fit_rules(train_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
-#    SRE_test_rules <- fit_rules(test_bake, drop_na(tibble(rules = RE_model$finalModel$rules$description))$rules)
-#    
-#    SRE_train <- cbind(SRE_train_rules, fitted_smooths_train)
-#    SRE_test <- cbind(SRE_test_rules, fitted_smooths_test)
-#    
-#
-#    winsorizable <- get_splineworthy_columns(SRE_train)
-# 
-#    
-#    indices <- list(
-#      list(analysis = 1:nrow(SRE_train), assessment = (nrow(SRE_train)+1):(nrow(SRE_train)+nrow(SRE_test))))
-#      
-#    
-#    
-#    splits <- lapply(indices, make_splits, data = rbind(SRE_train, SRE_test))
-#    
-#    SRE_split <- manual_rset(splits, c("Split SRE"))
-#    
-#    normalizable <- colnames(training(SRE_split$splits[[1]])[unlist(lapply(training(SRE_split$splits[[1]]), function(x) n_distinct(x)>2))])
-#    SRE_recipe <- recipe(label~., data = training(SRE_split$splits[[1]])) %>%
-#      step_hai_winsorized_truncate(all_of(names(!!training(SRE_split$splits[[1]]))[!!winsorizable]), fraction = 0.025) %>%
-#      step_rm(all_of(names(!!training(SRE_split$splits[[1]]))[!!winsorizable])) %>%
-#      step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
-#      step_mutate(across(where(is.logical), as.integer)) %>%
-#      step_normalize(all_of(setdiff(!!normalizable, colnames(!!training(SRE_split$splits[[1]])[!!winsorizable])))) %>%
-#      step_zv()
-#    
-#    set.seed(i)
-#    inner_folds_SRE <- SRE_train %>% vfold_cv(v=5)
-#    
-#    #regular lasso
-#    SRE_model <- 
-#      parsnip::logistic_reg(
-#        mode = "classification",
-#        mixture = 1,
-#        penalty = tune()
-#      ) %>%
-#      set_engine("glmnet")
-#    
-#    SRE_wf <- workflow() %>%
-#      #add_formula(label~.) %>%
-#      add_recipe(SRE_recipe) %>%
-#      add_model(SRE_model)
-#    
-#    SRE_tuned <- tune::tune_grid(
-#      object = SRE_wf,
-#      resamples = inner_folds_SRE,
-#      grid = hyperparameters_SRE_tidy, 
-#      metrics = metrics,
-#      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
-#    )
-#    
-#
-#    SRE_metrics <- SRE_tuned %>% 
-#      collect_metrics()
-#    
-#    lambda_min_auc <- SRE_metrics %>%
-#      filter(.metric=="roc_auc") %>%
-#      slice_max(mean) %>%
-#      dplyr::select(penalty) %>%
-#      pull()
-#    
-#    lambda_min_brier <- SRE_metrics %>%
-#      filter(.metric=="brier_class") %>%
-#      slice_min(mean) %>%
-#      dplyr::select(penalty) %>%
-#      pull()
-#    
-#    lambda_min_pg <- suppressMessages(SRE_tuned %>%
-#      collect_predictions(summarize = FALSE) %>%
-#      group_by(id, penalty, .config) %>%
-#      summarise(partial_gini = partialGini(.pred_X1, label)) %>%
-#      group_by(penalty, .config) %>%
-#      summarise(avg_pg = mean(partial_gini)) %>%
-#      ungroup() %>%
-#      slice_max(avg_pg) %>%
-#      slice_head() %>%
-#      dplyr::select(penalty) %>%                            
-#      pull())
-#    
-#
-#    lambda_sd_auc <- sd(unlist(lapply(SRE_tuned$.metrics, function(tbl) {
-#      # Filter to keep rows where penalty is "0.0111"
-#      # Note: Ensure the penalty column is treated as character if it's not numeric
-#      tbl %>% filter(.metric=="roc_auc") %>%
-#        slice_max(.estimate) %>%
-#        dplyr::select(penalty)    
-#      })))
-#    
-#    lambda_sd_brier <- sd(unlist(lapply(SRE_tuned$.metrics, function(tbl) {
-#      # Filter to keep rows where penalty is "0.0111"
-#      # Note: Ensure the penalty column is treated as character if it's not numeric
-#      tbl %>% filter(.metric=="brier_class") %>%
-#        slice_min(.estimate) %>%
-#        dplyr::select(penalty)    
-#    })))
-#    
-#    lambda_sd_pg <- suppressMessages(SRE_tuned %>%
-#      collect_predictions(summarize = FALSE) %>%
-#      group_by(id, penalty, .config) %>%
-#      summarise(partial_gini = partialGini(.pred_X1, label)) %>%
-#      group_by(id) %>%
-#      slice_max(partial_gini) %>%
-#      ungroup() %>%
-#      summarise(sd(penalty)) %>%
-#      pull())
-#    
-#    lambda_1se_auc <- lambda_min_auc + lambda_sd_auc
-#    lambda_1se_brier <- lambda_min_brier + lambda_sd_brier
-#    lambda_1se_pg <- lambda_min_pg + lambda_sd_pg
-    
-  
+
+    ####### 
+    # Fit regular lasso for AUC, Brier, PG and extract metrics
     SRE_model_auc <- 
       parsnip::logistic_reg(
         mode = "classification",
@@ -1154,12 +1036,8 @@ for(dataset in datasets) {
       add_model(SRE_model_pg)    
 
     final_SRE_fit_auc <- SRE_wf_auc %>% last_fit(SRE_split_AUC$splits[[1]], metrics = metrics)
-    
     final_SRE_fit_brier <- SRE_wf_brier %>% last_fit(SRE_split_Brier$splits[[1]], metrics = metrics)
-    
     final_SRE_fit_pg <- SRE_wf_pg %>% last_fit(SRE_split_PG$splits[[1]], metrics = metrics)
-    
-    
     
     auc <- final_SRE_fit_auc %>%
       collect_metrics() %>%
@@ -1176,12 +1054,6 @@ for(dataset in datasets) {
     pg <- final_SRE_fit_pg %>%
       collect_pg()
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
-    
-    
-    #MLP
-    
-    
-  
   }
   write.csv(AUC_results, file = paste("./results/",dataset_vector[dataset_counter],"_AUC.csv", sep = ""))
   write.csv(Brier_results, file = paste("./results/",dataset_vector[dataset_counter],"_BRIER.csv", sep = ""))
