@@ -55,6 +55,10 @@ save(HMEQ, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/hmeq.Rda")
 #GMSC
 kaggle <- read_csv("data/GiveMeSomeCredit/cs-training.csv")
 
+# take a 20% sample
+set.seed(42)
+kaggle <- kaggle[sample(nrow(kaggle), round(0.2*nrow(kaggle))), ]
+
 kaggle <- kaggle %>%
   mutate_at(vars(SeriousDlqin2yrs), as.factor) %>%
   rename("label" = "SeriousDlqin2yrs") %>%

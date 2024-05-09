@@ -15,16 +15,6 @@ hyperparameters_SRE_tidy <- expand.grid(list(
   penalty = seq(0.001,1, length.out = 1000)
 ))
 
-
-#GAM
-#splines for numerical
-
-#LDA
-
-
-#QDA
-
-
 #CTREE
 hyperparameters_CTREE <- list(
   mincriterion = 1-c(0.05,0.1,0.2,0.3,0.4)
@@ -55,10 +45,6 @@ hyperparameters_LGBM_tidy <- crossing(
   mtry = round(ncol(train_bake_x)*c(0.6,0.8))
 )
 
-
-
-#LightGBM eventueel
-
 preGrid <- getModelInfo("pre")[[1]]$grid( 
   maxdepth = c(1,2,3),
   learnrate = c(.3, .5),
@@ -66,10 +52,4 @@ preGrid <- getModelInfo("pre")[[1]]$grid(
   sampfrac = 1,
   use.grad = TRUE,
   mtry = round(sqrt(ncol(train_bake_x)*c(0.1,0.25,0.5,1,2,4)))
-) #adaptive lasso with ridge weights
-# !! nlambda by default 100 models 
-
-#hyperparameters_
-#hyperparameters_
-#hyperparameters_
-#hyperparameters_
+)

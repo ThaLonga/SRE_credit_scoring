@@ -2,7 +2,7 @@
 #returns predictions
 
 get_splineworthy_columns <- function(X) {
-  return((lapply(X, n_distinct)>6) & unlist(lapply(X, is.numeric)))
+  return((lapply(X, n_distinct)>9) & unlist(lapply(X, is.numeric)))
 }
 
 #PG: cutoff = max probability of default
