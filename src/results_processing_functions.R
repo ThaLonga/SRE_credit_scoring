@@ -43,3 +43,8 @@ avg_ranks_summarised <- function(.data) {
     group_by(algorithm) %>%
     summarise(average_rank = mean(average_rank))
 } 
+
+friedman_pairwise <- function(best_rank, compare_rank, N, k) {
+  z = ((compare_rank - best_rank)/(sqrt(k*(k+1)/(6*N))))
+  return(z)
+}

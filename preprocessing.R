@@ -1,5 +1,5 @@
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
-p_load(tidyverse, fastDummies, dplyr, DescTools)
+p_load(tidyverse, fastDummies, dplyr, DescTools, readxl)
 
 source('./src/preprocessing_functions.R')
 
@@ -102,25 +102,14 @@ LC <- LC %>%
 save(LC, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/LC.Rda")
 
 #JC
-JC <- read_delim("data/japanese+credit+screening/crx.data", ",", trim_ws = TRUE, col_names = FALSE)
-
-JC[JC=="?"] <- NA
-JC$X16 <- replace(JC$X16, JC$X16 == "+", 1)
-JC$X16 <- as.numeric(replace(JC$X16, JC$X16 == "-", 0))
-
-
-JC <- JC %>%
-  mutate_at(vars(X2, X11, X14), as.numeric) %>%
-  mutate_at(vars(X1, X4, X5, X6, X7, X9, X10, X12, X13, X16), as.factor) %>%
-  rename("label" = "X16") %>%
+TC <- read_excel("data/default+of+credit+card+clients/default of credit card clients.xls", trim_ws = TRUE, range=cell_rows(2:30002), col_names = TRUE)
+#33% sample
+TC <- TC[sample(nrow(TC), round(1/3*nrow(TC))), ]
+TC <- TC %>%
+  mutate_all(as.integer) %>%
+  rename("label" = "default payment next month") %>%
+  mutate_at(vars(label), as.factor) %>%
   mutate(label = factor(label, 
                         labels = make.names(levels(label))))
 
-#add flags for missing values
-columns_to_flag <- colnames(JC)[unlist(lapply(JC, function(x) sum(is.na(x))))>0]
-for (col in columns_to_flag) {
-  flag_col_name <- paste0(col, "_FLAG")
-  JC[[flag_col_name]] <- as.factor(ifelse(is.na(JC[[col]]), 1, 0))
-}
-
-save(JC, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/JC.Rda")
+save(TC, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/TC.Rda")
