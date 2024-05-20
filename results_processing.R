@@ -6,9 +6,9 @@ loaded_results <- load_results()
 datasets <- load_data()
 nr_datasets = 7
 
-combined_results_AUC <- bind_rows(loaded_results$GC_AUC, loaded_results$AC_AUC, loaded_results$HMEQ_AUC, loaded_results$TH02_AUC, loaded_results$LC_AUC, loaded_results$TC_AUC, loaded_results$GMSC_AUC) %>% select(-...1)
-combined_results_Brier <- bind_rows(loaded_results$GC_BRIER, loaded_results$AC_BRIER, loaded_results$HMEQ_BRIER, loaded_results$TH02_BRIER, loaded_results$LC_BRIER, loaded_results$TC_BRIER, loaded_results$GMSC_BRIER) %>% select(-...1)
-combined_results_PG <- bind_rows(loaded_results$GC_PG, loaded_results$AC_PG, loaded_results$HMEQ_PG, loaded_results$TH02_PG, loaded_results$LC_PG, loaded_results$TC_PG, loaded_results$GMSC_PG) %>% select(-...1)
+combined_results_AUC <- bind_rows(loaded_results$GC_AUC, loaded_results$AC_AUC, loaded_results$HMEQ_AUC, loaded_results$TH02_AUC, loaded_results$LC_AUC, loaded_results$TC_AUC, loaded_results$GMSC_AUC) %>% dplyr::select(-...1)
+combined_results_Brier <- bind_rows(loaded_results$GC_BRIER, loaded_results$AC_BRIER, loaded_results$HMEQ_BRIER, loaded_results$TH02_BRIER, loaded_results$LC_BRIER, loaded_results$TC_BRIER, loaded_results$GMSC_BRIER) %>% dplyr::select(-...1)
+combined_results_PG <- bind_rows(loaded_results$GC_PG, loaded_results$AC_PG, loaded_results$HMEQ_PG, loaded_results$TH02_PG, loaded_results$LC_PG, loaded_results$TC_PG, loaded_results$GMSC_PG) %>% dplyr::select(-...1)
 
 # AvgRank calculation
 
@@ -30,38 +30,36 @@ View(avg_ranks_summarised_AUC)
 View(average_ranks_AUC)
 
 # Friedman test
-friedman_AUC <- average_ranks_AUC %>% convert_as_factor(dataset, algorithm) %>% select(-average_metric) %>% friedman_test(average_rank ~ algorithm|dataset)
+friedman_AUC <- average_ranks_AUC %>% convert_as_factor(dataset, algorithm) %>% dplyr::select(-average_metric) %>% friedman_test(average_rank ~ algorithm|dataset)
 friedman_Brier <- average_ranks_Brier %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
 friedman_PG <- average_ranks_PG %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
 
 
 #AUC pairwise friedman
-AUC_pairwise_p_values = c()
+AUC_pairwise_p_values <- c()
 for(i in 1:nrow(avg_ranks_summarised_AUC)) {
-  R_j = min(avg_ranks_summarised_AUC$average_rank)
-  z = friedman_pairwise(R_j, avg_ranks_summarised_AUC$average_rank[i], nrow(avg_ranks_summarised_AUC), nr_datasets)
-  AUC_pairwise_p_values[i] = pnorm(z, lower.tail = FALSE)*2
+  R_j <- min(avg_ranks_summarised_AUC$average_rank)
+  z <- friedman_pairwise(R_j, avg_ranks_summarised_AUC$average_rank[i], nrow(avg_ranks_summarised_AUC), nr_datasets)
+  AUC_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
 }
 #Brier pairwise friedman
-Brier_pairwise_p_values = c()
+Brier_pairwise_p_values <- c()
 for(i in 1:nrow(avg_ranks_summarised_Brier)) {
-  R_j = min(avg_ranks_summarised_Brier$average_rank)
-  z = friedman_pairwise(R_j, avg_ranks_summarised_Brier$average_rank[i], nrow(avg_ranks_summarised_Brier), nr_datasets)
-  Brier_pairwise_p_values[i] = pnorm(z, lower.tail = FALSE)*2
+  R_j <- min(avg_ranks_summarised_Brier$average_rank)
+  z <- friedman_pairwise(R_j, avg_ranks_summarised_Brier$average_rank[i], nrow(avg_ranks_summarised_Brier), nr_datasets)
+  Brier_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
 }
 #PG pairwise friedman
-PG_pairwise_p_values = c()
+PG_pairwise_p_values <- c()
 for(i in 1:nrow(avg_ranks_summarised_PG)) {
-  R_j = min(avg_ranks_summarised_PG$average_rank)
-  z = friedman_pairwise(R_j, avg_ranks_summarised_PG$average_rank[i], nrow(avg_ranks_summarised_PG), nr_datasets)
-  PG_pairwise_p_values[i] = pnorm(z, lower.tail = FALSE)*2
+  R_j <- min(avg_ranks_summarised_PG$average_rank)
+  z <- friedman_pairwise(R_j, avg_ranks_summarised_PG$average_rank[i], nrow(avg_ranks_summarised_PG), nr_datasets)
+  PG_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
 }
 #join to make table
-all_avg_ranks = cbind(avg_ranks_summarised_AUC$algorithm, round(avg_ranks_summarised_AUC$average_rank, 2), round(avg_ranks_summarised_Brier$average_rank, 2), round(avg_ranks_summarised_PG$average_rank, 2)) %>% as_tibble()
-pairwise_p_values = cbind(avg_ranks_summarised_AUC$algorithm, round(AUC_pairwise_p_values, 3), round(Brier_pairwise_p_values, 3), round(PG_pairwise_p_values, 3)) %>% as_tibble()
-all_avg_ranks = sapply(all_avg_ranks, as.character)
-pairwise_p_values = sapply(pairwise_p_values, as.character)
-pairwise_p_values_brackets = as.data.frame(mapply(paste, "(", pairwise_p_values, ")", MoreArgs = list(sep = "")))
+all_avg_ranks <- cbind(avg_ranks_summarised_AUC$algorithm, round(avg_ranks_summarised_AUC$average_rank, 2), round(avg_ranks_summarised_Brier$average_rank, 2), round(avg_ranks_summarised_PG$average_rank, 2)) %>% as_tibble()
+pairwise_p_values <- cbind(avg_ranks_summarised_AUC$algorithm, round(AUC_pairwise_p_values, 3), round(Brier_pairwise_p_values, 3), round(PG_pairwise_p_values, 3)) %>% as_tibble()
+pairwise_p_values_brackets <- as.data.frame(mapply(paste, "(", pairwise_p_values, ")", MoreArgs = list(sep = "")))
 pairwise_p_values_brackets[1]<-NA
 
 table <- as.tibble(mapply(paste, all_avg_ranks, pairwise_p_values_brackets, MoreArgs = list(sep = " ")))
@@ -70,36 +68,42 @@ table <- as.tibble(lapply(table, function(x) {
 }))
 colnames(table) <- c("Algorithm", "AUC", "Brier", "PG")
 table_latex <- kable(table, "latex", booktabs = T)
-str_replace_all(table_latex, fixed(c("("="\textit{(", ")" = ")}")))
+str_replace_all(table_latex, stringr::fixed(c("("="\textit{(", ")" = ")}")))
 
 
 # Bayesian signed rank test (Benavoli et al., 2017)
 combined_results_AUC$group <- paste(combined_results_AUC$dataset, combined_results_AUC$nr_fold)
-AUC_prep_rank <- combined_results_AUC %>% select(group, algorithm, metric) %>% pivot_wider(names_from = algorithm, values_from = metric) %>% rename("id" = group)
+AUC_prep_rank <- combined_results_AUC %>% dplyr::select(group, algorithm, metric) %>% pivot_wider(names_from = algorithm, values_from = metric) %>% rename("id" = group)
 AUC_bayes <- perf_mod(AUC_prep_rank,
                       iter = 20000,
                       seed = 42)
 
-AUC_SRE_RE <- contrast_models(AUC_bayes, 'SRE', 'RE')
-autoplot(AUC_SRE_RE)
+AUC_SRE_RE <- contrast_models(AUC_bayes, c(rep('SRE',4), rep('RE', 4)), rep(c('LRR', 'RF', 'RE', 'SRE'),2))
+autoplot(AUC_SRE_RE, size = 0.01)
 summary(AUC_SRE_RE, size = 0.01) %>% 
-  select(contrast, starts_with("pract"))
+  dplyr::select(contrast, starts_with("pract"))
 AUC_SRE_LRR <- contrast_models(AUC_bayes, 'SRE', 'LRR')
-autoplot(AUC_SRE_LRR)
+autoplot(AUC_SRE_LRR, size = 0.01)
 summary(AUC_SRE_LRR, size = 0.01) %>% 
-  select(contrast, starts_with("pract"))
+  dplyr::select(contrast, starts_with("pract"))
 AUC_RF_LRR <- contrast_models(AUC_bayes, 'RF', 'LRR')
-autoplot(AUC_RF_LRR)
+autoplot(AUC_RF_LRR, size = 0.01)
 summary(AUC_RF_LRR, size = 0.01) %>% 
-  select(contrast, starts_with("pract"))
+  dplyr::select(contrast, starts_with("pract"))
+
+AUC_contrasts <- contrast_models(AUC_bayes)
+autoplot(AUC_contrasts)
+summary(AUC_contrasts, size = 0.01) %>% 
+  dplyr::select(contrast, starts_with("pract"))
+
 
 
 
 
 combined_results_Brier$group <- paste(combined_results_Brier$dataset, combined_results_Brier$nr_fold)
-Brier_prep_rank <- combined_results_Brier %>% select(group, algorithm, metric) %>% pivot_wider(names_from = algorithm, values_from = metric) %>% rename("id" = group)
+Brier_prep_rank <- combined_results_Brier %>% dplyr::select(group, algorithm, metric) %>% pivot_wider(names_from = algorithm, values_from = metric) %>% rename("id" = group)
 #Scale between 0.5 and 1
-max_Brier <- Brier_prep_rank %>% select(where(is.numeric)) %>% apply(1,max)
+max_Brier <- Brier_prep_rank %>% dplyr::select(where(is.numeric)) %>% apply(1,max)
 Brier_scaled <- cbind(Brier_prep_rank[1],
                      0.5 + 0.5*(Brier_prep_rank[-1]/max_Brier))
 Brier_bayes <- perf_mod(Brier_scaled, #NORMALISEREN
@@ -109,20 +113,21 @@ Brier_bayes <- perf_mod(Brier_scaled, #NORMALISEREN
 Brier_SRE_RE <- contrast_models(Brier_bayes, 'SRE', 'RE')
 autoplot(Brier_SRE_RE)
 summary(Brier_SRE_RE, size = 0.01) %>% 
-  select(contrast, starts_with("pract"))
+  dplyr::select(contrast, starts_with("pract"))
 Brier_SRE_LRR <- contrast_models(Brier_bayes, 'SRE', 'LRR')
 autoplot(Brier_SRE_LRR)
 summary(Brier_SRE_LRR, size = 0.01) %>% 
-  select(contrast, starts_with("pract"))
+  dplyr::select(contrast, starts_with("pract"))
 Brier_RF_LRR <- contrast_models(Brier_bayes, 'RF', 'LRR')
 autoplot(Brier_RF_LRR)
 summary(Brier_RF_LRR, size = 0.01) %>% 
-  select(contrast, starts_with("pract"))
+  dplyr::select(contrast, starts_with("pract"))
+
 
 combined_results_PG$group <- paste(combined_results_PG$dataset, combined_results_PG$nr_fold)
-PG_prep_rank <- combined_results_PG %>% select(group, algorithm, metric) %>% pivot_wider(names_from = algorithm, values_from = metric) %>% rename("id" = group)
+PG_prep_rank <- combined_results_PG %>% dplyr::select(group, algorithm, metric) %>% pivot_wider(names_from = algorithm, values_from = metric) %>% rename("id" = group)
 #Scale between 0.5 and 1
-max_PG <- PG_prep_rank %>% select(where(is.numeric)) %>% apply(1,max)
+max_PG <- PG_prep_rank %>% dplyr::select(where(is.numeric)) %>% apply(1,max)
 PG_scaled <- cbind(PG_prep_rank[1],
                       0.5 + 0.5*(PG_prep_rank[-1]/max_PG))
 PG_bayes <- perf_mod(PG_scaled,
@@ -131,49 +136,40 @@ PG_bayes <- perf_mod(PG_scaled,
 
 
 
-#Compare all algos
-classifier_names <- avg_ranks_summarised_AUC$algorithm
-control <- 'SRE'
-list_control <- rep(list(control),length(classifier_names)-1)
-compare_algos <- classifier_names[-which(classifier_names == control)]
-list_compare <- c()
-for(i in 1:length(compare_algos)) list_compare[i] <- compare_algos[i]
+#Compare important algorithms
+control <- c(rep('RE',3), rep('SRE',3))
+compare <- c("LRR", "RF", "SRE", "LRR", "RF", "RE")
 
 AUC_comparison <- contrast_models(AUC_bayes, 
-                                   list_compare,
-                                   list_control)
-comparison_AUC <- summary(AUC_comparison, size=.01) %>% 
-  select(contrast, starts_with("pract")) %>% 
-  mutate(algorithm = str_replace_all(contrast,' vs lhnnls','')) %>% 
-  select(-1) %>%
-  relocate(algorithm, .before = pract_neg) 
-comparison_AUC$algorithm <- list_compare
-#kable(comparison_AUC, "latex", booktabs = T)
+                                  control,
+                                  compare)
 plots <- autoplot(AUC_comparison, size = 0.01) +
   facet_wrap(~contrast, scales = "free", nrow = 2)
 print(plots)
+kable(summary(AUC_comparison, size = 0.01) %>% 
+        dplyr::select(contrast, starts_with("pract")), "latex", booktabs = T)
+
 
 Brier_comparison <- contrast_models(Brier_bayes, 
-                                  list_compare,
-                                  list_control)
-comparison_Brier <- summary(Brier_comparison, size=.01) %>% 
-  select(contrast, starts_with("pract")) %>% 
-  mutate(algorithm = str_replace_all(contrast,' vs lhnnls','')) %>% 
-  select(-1) %>%
-  relocate(algorithm, .before = pract_neg) 
-comparison_Brier$algorithm <- list_compare
+                                  control,
+                                  compare)
 #kable(comparison_Brier, "latex", booktabs = T)
 plots <- autoplot(Brier_comparison, size = 0.01) +
   facet_wrap(~contrast, scales = "free", nrow = 2)
 print(plots)
 
+kable(summary(Brier_comparison, size = 0.01) %>% 
+  dplyr::select(contrast, starts_with("pract")), "latex", booktabs = T)
+
+
+
 PG_comparison <- contrast_models(PG_bayes, 
                                   list_compare,
                                   list_control)
 comparison_PG <- summary(PG_comparison, size=.01) %>% 
-  select(contrast, starts_with("pract")) %>% 
+  dplyr::select(contrast, starts_with("pract")) %>% 
   mutate(algorithm = str_replace_all(contrast,' vs lhnnls','')) %>% 
-  select(-1) %>%
+  dplyr::select(-1) %>%
   relocate(algorithm, .before = pract_neg) 
 comparison_PG$algorithm <- list_compare
 #kable(comparison_PG, "latex", booktabs = T)
@@ -205,27 +201,27 @@ for(name in dataset_vector) {
 ## CHANGE NAMING FOR 4 DATASETS!!!!!!!!
 
 AUC_results <- do.call(cbind, avg_results[grepl("AUC", names(avg_results))]) %>%
-  select(-c(3))
+  dplyr::select(-c(3))
 names(AUC_results) <- c("algorithm", "AC", "TH02")
-AUC_ranks <- data.frame(apply(AUC_results%>%select(-1), MARGIN = 2, FUN = rank))%>%
+AUC_ranks <- data.frame(apply(AUC_results%>%dplyr::select(-1), MARGIN = 2, FUN = rank))%>%
   rename(rank_AC = AC) %>%
   rename(rank_TH02 = TH02)
 avg_AUC_rank <- rowMeans(AUC_ranks)
 AUC_results$avgRank_AUC <- avg_AUC_rank
 
 BRIER_results <- do.call(cbind, avg_results[grepl("BRIER", names(avg_results))]) %>%
-  select(-c(3))
+  dplyr::select(-c(3))
 names(BRIER_results) <- c("algorithm", "AC", "TH02")
-BRIER_ranks <- data.frame(apply(-(BRIER_results%>%select(-1)), MARGIN = 2, FUN = rank))%>%
+BRIER_ranks <- data.frame(apply(-(BRIER_results%>%dplyr::select(-1)), MARGIN = 2, FUN = rank))%>%
   rename(rank_AC = AC) %>%
   rename(rank_TH02 = TH02)
 avg_BRIER_rank <- rowMeans(BRIER_ranks)
 BRIER_results$avgRank_BRIER <- avg_BRIER_rank
 
 PG_results <- do.call(cbind, avg_results[grepl("PG", names(avg_results))]) %>%
-  select(-c(3))
+  dplyr::select(-c(3))
 names(PG_results) <- c("algorithm", "AC", "TH02")
-PG_ranks <- data.frame(apply(PG_results%>%select(-1), MARGIN = 2, FUN = rank))%>%
+PG_ranks <- data.frame(apply(PG_results%>%dplyr::select(-1), MARGIN = 2, FUN = rank))%>%
   rename(rank_AC = AC) %>%
   rename(rank_TH02 = TH02)
 avg_PG_rank <- rowMeans(PG_ranks)
@@ -294,15 +290,15 @@ comparison_PG <- combined_results_PG %>%
   mutate(SRE_better_than_LRR = LRR < SRE)
 
 basetable_AUC <- comparison_AUC %>%
-  select(c(size, numeric_cols, nominal_cols, SRE_better_than_LRR)) %>%
+  dplyr::select(c(size, numeric_cols, nominal_cols, SRE_better_than_LRR)) %>%
   mutate(feature_ratio = nominal_cols/numeric_cols) %>%
   mutate(SRE_better_than_LRR = as.factor(SRE_better_than_LRR))
 basetable_Brier <- comparison_Brier %>%
-  select(c(size, numeric_cols, nominal_cols, SRE_better_than_LRR)) %>%
+  dplyr::select(c(size, numeric_cols, nominal_cols, SRE_better_than_LRR)) %>%
   mutate(feature_ratio = nominal_cols/numeric_cols) %>%
   mutate(SRE_better_than_LRR = as.factor(SRE_better_than_LRR))
 basetable_PG <- comparison_PG %>%
-  select(c(size, numeric_cols, nominal_cols, SRE_better_than_LRR)) %>%
+  dplyr::select(c(size, numeric_cols, nominal_cols, SRE_better_than_LRR)) %>%
   mutate(feature_ratio = nominal_cols/numeric_cols) %>%
   mutate(SRE_better_than_LRR = as.factor(SRE_better_than_LRR))
 
