@@ -1,7 +1,9 @@
 library(pacman)
-p_load(tidyverse, knitr, rstatix, tidyposterior, ggplot2, partykit, xtable)
+p_load(tidyverse, knitr, rstatix, tidyposterior, ggplot2, partykit, xtable, scmamp)
+library(scmamp)
 source("./src/data_loader.R")
 source("./src/results_processing_functions.R")
+source("./src/adjust_Rom.R")
 loaded_results <- load_results()
 datasets <- load_data()
 nr_datasets = 7
@@ -42,6 +44,8 @@ for(i in 1:nrow(avg_ranks_summarised_AUC)) {
   z <- friedman_pairwise(R_j, avg_ranks_summarised_AUC$average_rank[i], nrow(avg_ranks_summarised_AUC), nr_datasets)
   AUC_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
 }
+AUC_pairwise_p_values_adjusted <- adjustRom(AUC_pairwise_p_values, alpha=0.05)
+
 #Brier pairwise friedman
 Brier_pairwise_p_values <- c()
 for(i in 1:nrow(avg_ranks_summarised_Brier)) {
@@ -49,6 +53,8 @@ for(i in 1:nrow(avg_ranks_summarised_Brier)) {
   z <- friedman_pairwise(R_j, avg_ranks_summarised_Brier$average_rank[i], nrow(avg_ranks_summarised_Brier), nr_datasets)
   Brier_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
 }
+Brier_pairwise_p_values_adjusted <- adjustRom(Brier_pairwise_p_values, alpha=0.05)
+
 #PG pairwise friedman
 PG_pairwise_p_values <- c()
 for(i in 1:nrow(avg_ranks_summarised_PG)) {
@@ -56,9 +62,11 @@ for(i in 1:nrow(avg_ranks_summarised_PG)) {
   z <- friedman_pairwise(R_j, avg_ranks_summarised_PG$average_rank[i], nrow(avg_ranks_summarised_PG), nr_datasets)
   PG_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
 }
+PG_pairwise_p_values_adjusted <- adjustRom(PG_pairwise_p_values, alpha=0.05)
+
 #join to make table
 all_avg_ranks <- cbind(avg_ranks_summarised_AUC$algorithm, round(avg_ranks_summarised_AUC$average_rank, 2), round(avg_ranks_summarised_Brier$average_rank, 2), round(avg_ranks_summarised_PG$average_rank, 2)) %>% as_tibble()
-pairwise_p_values <- cbind(avg_ranks_summarised_AUC$algorithm, round(AUC_pairwise_p_values, 3), round(Brier_pairwise_p_values, 3), round(PG_pairwise_p_values, 3)) %>% as_tibble()
+pairwise_p_values <- cbind(avg_ranks_summarised_AUC$algorithm, round(AUC_pairwise_p_values_adjusted, 3), round(Brier_pairwise_p_values_adjusted, 3), round(PG_pairwise_p_values_adjusted, 3)) %>% as_tibble()
 pairwise_p_values_brackets <- as.data.frame(mapply(paste, "(", pairwise_p_values, ")", MoreArgs = list(sep = "")))
 pairwise_p_values_brackets[1]<-NA
 
@@ -140,42 +148,54 @@ PG_bayes <- perf_mod(PG_scaled,
 control <- c(rep('RE',3), rep('SRE',3))
 compare <- c("LRR", "RF", "SRE", "LRR", "RF", "RE")
 
+control_small <- rep('SRE',2)
+compare_small <- c("LRR", "RF")
+
+
 AUC_comparison <- contrast_models(AUC_bayes, 
                                   control,
                                   compare)
 plots <- autoplot(AUC_comparison, size = 0.01) +
-  facet_wrap(~contrast, scales = "free", nrow = 2)
+  facet_wrap(~contrast, scales = "free", nrow = 1)
 print(plots)
+
 kable(summary(AUC_comparison, size = 0.01) %>% 
-        dplyr::select(contrast, starts_with("pract")), "latex", booktabs = T)
+        dplyr::select(contrast, starts_with("pract")) %>%
+        mutate_if(is.numeric, round, digits = 3), "latex", booktabs = T)
 
 
 Brier_comparison <- contrast_models(Brier_bayes, 
-                                  control,
-                                  compare)
+                                  control_small,
+                                  compare_small)
 #kable(comparison_Brier, "latex", booktabs = T)
 plots <- autoplot(Brier_comparison, size = 0.01) +
-  facet_wrap(~contrast, scales = "free", nrow = 2)
+  facet_wrap(~contrast, scales = "free", nrow = 1)
 print(plots)
 
 kable(summary(Brier_comparison, size = 0.01) %>% 
-  dplyr::select(contrast, starts_with("pract")), "latex", booktabs = T)
+        dplyr::select(contrast, starts_with("pract")) %>%
+        mutate_if(is.numeric, round, digits = 3), "latex", booktabs = T)
 
 
 
 PG_comparison <- contrast_models(PG_bayes, 
-                                  list_compare,
-                                  list_control)
-comparison_PG <- summary(PG_comparison, size=.01) %>% 
-  dplyr::select(contrast, starts_with("pract")) %>% 
-  mutate(algorithm = str_replace_all(contrast,' vs lhnnls','')) %>% 
-  dplyr::select(-1) %>%
-  relocate(algorithm, .before = pract_neg) 
-comparison_PG$algorithm <- list_compare
-#kable(comparison_PG, "latex", booktabs = T)
+                                  control_small,
+                                  compare_small)
+
 plots <- autoplot(PG_comparison, size = 0.01) +
-  facet_wrap(~contrast, scales = "free", nrow = 2)
+  facet_wrap(~contrast, scales = "free", nrow = 1)
 print(plots)
+
+kable(summary(PG_comparison, size = 0.01) %>% 
+        dplyr::select(contrast, starts_with("pract")) %>%
+        mutate_if(is.numeric, round, digits = 3), "latex", booktabs = T)
+
+
+
+
+
+
+
 
 for(name in names(loaded_results)) {
   # calculate means

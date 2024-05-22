@@ -35,7 +35,7 @@ metric_results <- data.frame(
   stringsAsFactors = FALSE
 )
 
-dataset_counter = 4
+dataset_counter = 1
 
 for(dataset in datasets) {
   
@@ -431,7 +431,7 @@ for(dataset in datasets) {
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
   }
   PG_results$metric<-unlist(PG_results$metric)
-  write.csv(PG_results, file = paste("./results/",dataset_vector[dataset_counter],"_PG_rerun.csv", sep = ""))
+  write.csv(PG_results, file = paste("./results/",dataset_vector[dataset_counter+5],"_PG_rerun.csv", sep = ""))
   
   dataset_counter <- dataset_counter + 1
 }

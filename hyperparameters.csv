@@ -1,0 +1,29 @@
+﻿Classifier;Parameters;Values;Source (if any)
+Single classifiers;;;
+LRR;Mixture;0, 0.2, 0.4, 0.6, 0.8, 1;
+;Penalty;seq(0.001,1, length.out = 100);
+GAM;N.a.;;
+LDA;N.a.;;
+CTREE;Minimum splitting criterion;0.6, 0.7, 0.8, 0.9, 0.95;
+Homogeneous ensembles;;;
+RF;No. of CART trees;100, 250, 500, 750, 1000;\citet{lessman15}
+;No. of randomly sampled variables;\(sqrt{m*[0.1, 0.25, 0.5, 1, 2, 4]}\);
+;Minimum node size;1;
+XGB;No. of CART trees;50, 100, 150;\citet{gunnarsson21}
+;Learning rate;0.3, 0.4;
+;Maximum tree depth;1, 2, 3;
+;Fraction of inputs sampled ;0.6, 0.8;
+;Fraction of rows sampled;0.5, 0.75, 1.00;
+LGBM;No. of CART trees;50, 100, 150;\citet{gunnarsson21}
+;Learning rate;0.3, 0.4;
+;Maximum tree depth;1, 2, 3;
+;Fraction of inputs sampled ;0.6, 0.8;
+Heterogeneous ensembles;;;
+RE;Maximum tree depth;1, 2, 3;
+;Learning rate;0.3, 0.4;
+;Fraction of inputs sampled ;1;
+;No. of randomly sampled variables;\(sqrt{m*[0.1, 0.25, 0.5, 1, 2, 4]}\);
+SRE;Maximum tree depth;1, 2, 3;
+;Learning rate;0.3, 0.4;
+;Fraction of inputs sampled ;1;
+;No. of randomly sampled variables;\(sqrt{m*[0.1, 0.25, 0.5, 1, 2, 4]}\);

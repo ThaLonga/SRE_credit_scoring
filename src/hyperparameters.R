@@ -1,11 +1,6 @@
 # Hyperparameters
 
 #Lasso
-hyperparameters_LR_R <- list(
-  alpha = c(0,.2,.4,.6,.8,1),
-  lambda = seq(0.001,1, length.out = 100)
-)
-
 hyperparameters_LR_R_tidy <- expand.grid(list(
   mixture = c(0,.2,.4,.6,.8,1),
   penalty = seq(0.001,1, length.out = 100)
