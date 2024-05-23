@@ -101,8 +101,8 @@ for(dataset in datasets) {
       step_impute_mean(all_numeric_predictors()) %>%
       step_impute_mode(all_string_predictors()) %>%
       step_impute_mode(all_factor_predictors()) %>%
-      #step_hai_winsorized_truncate(all_numeric_predictors(), fraction = 0.025) %>%
-      #step_rm(!contains("winsorized") & all_numeric_predictors()) %>%
+      step_hai_winsorized_truncate(all_numeric_predictors(), fraction = 0.025) %>%
+      step_rm(!contains("winsorized") & all_numeric_predictors()) %>%
       step_novel(all_nominal_predictors()) %>%
       step_dummy(all_string_predictors()) %>%
       step_dummy(all_factor_predictors()) %>%

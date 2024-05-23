@@ -12,6 +12,52 @@ combined_results_AUC <- bind_rows(loaded_results$GC_AUC, loaded_results$AC_AUC, 
 combined_results_Brier <- bind_rows(loaded_results$GC_BRIER, loaded_results$AC_BRIER, loaded_results$HMEQ_BRIER, loaded_results$TH02_BRIER, loaded_results$LC_BRIER, loaded_results$TC_BRIER, loaded_results$GMSC_BRIER) %>% dplyr::select(-...1)
 combined_results_PG <- bind_rows(loaded_results$GC_PG, loaded_results$AC_PG, loaded_results$HMEQ_PG, loaded_results$TH02_PG, loaded_results$LC_PG, loaded_results$TC_PG, loaded_results$GMSC_PG) %>% dplyr::select(-...1)
 
+
+# tables for attachments:
+#####
+combined_results_AUC_table <- combined_results_AUC %>%
+  group_by(dataset, algorithm) %>%
+  summarise(avg_metric = round(mean(metric), 3), sd_metric = round(sd(metric), 3)) %>%
+  ungroup() %>%
+  mutate_if(is.numeric, ~scales::number(., accuracy = 0.001))
+
+combined_results_AUC_table$sd_brackets <- mapply(paste, "(", combined_results_AUC_table$sd_metric, ")", MoreArgs = list(sep = ""))
+combined_results_AUC_table$AUC <- mapply(paste, combined_results_AUC_table$avg_metric, combined_results_AUC_table$sd_brackets, MoreArgs = list(sep = " "))
+
+finished_AUC_table <- combined_results_AUC_table %>%
+  dplyr::select(dataset, algorithm, AUC) %>%
+  pivot_wider(names_from = dataset, values_from = AUC)
+
+combined_results_Brier_table <- combined_results_Brier %>%
+  group_by(dataset, algorithm) %>%
+  summarise(avg_metric = round(mean(metric), 3), sd_metric = round(sd(metric), 3)) %>%
+  ungroup() %>%
+  mutate_if(is.numeric, ~scales::number(., accuracy = 0.001))
+
+combined_results_Brier_table$sd_brackets <- mapply(paste, "(", combined_results_Brier_table$sd_metric, ")", MoreArgs = list(sep = ""))
+combined_results_Brier_table$Brier <- mapply(paste, combined_results_Brier_table$avg_metric, combined_results_Brier_table$sd_brackets, MoreArgs = list(sep = " "))
+
+finished_Brier_table <- combined_results_Brier_table %>%
+  dplyr::select(dataset, algorithm, Brier) %>%
+  pivot_wider(names_from = dataset, values_from = Brier)
+
+combined_results_PG_table <- combined_results_PG %>%
+  group_by(dataset, algorithm) %>%
+  summarise(avg_metric = round(mean(metric), 3), sd_metric = round(sd(metric), 3)) %>%
+  ungroup() %>%
+  mutate_if(is.numeric, ~scales::number(., accuracy = 0.001))
+
+combined_results_PG_table$sd_brackets <- mapply(paste, "(", combined_results_PG_table$sd_metric, ")", MoreArgs = list(sep = ""))
+combined_results_PG_table$PG <- mapply(paste, combined_results_PG_table$avg_metric, combined_results_PG_table$sd_brackets, MoreArgs = list(sep = " "))
+
+finished_PG_table <- combined_results_PG_table %>%
+  dplyr::select(dataset, algorithm, PG) %>%
+  pivot_wider(names_from = dataset, values_from = PG)
+
+kable(rbind(finished_AUC_table, finished_Brier_table, finished_PG_table), "latex", booktabs = T)
+#####
+
+
 # AvgRank calculation
 
 average_ranks_AUC <- avg_ranks(combined_results_AUC)
@@ -100,9 +146,9 @@ summary(AUC_RF_LRR, size = 0.01) %>%
   dplyr::select(contrast, starts_with("pract"))
 
 AUC_contrasts <- contrast_models(AUC_bayes)
-autoplot(AUC_contrasts)
-summary(AUC_contrasts, size = 0.01) %>% 
-  dplyr::select(contrast, starts_with("pract"))
+autoplot(AUC_contrasts, size = 0.01)
+kable(summary(AUC_contrasts, size = 0.01) %>% 
+  dplyr::select(contrast, starts_with("pract")), "latex", booktabs = T)
 
 
 
@@ -131,6 +177,11 @@ autoplot(Brier_RF_LRR)
 summary(Brier_RF_LRR, size = 0.01) %>% 
   dplyr::select(contrast, starts_with("pract"))
 
+Brier_contrasts <- contrast_models(Brier_bayes)
+autoplot(Brier_contrasts, size = 0.01)
+kable(summary(Brier_contrasts, size = 0.01) %>% 
+  dplyr::select(contrast, starts_with("pract")), "latex", booktabs = T)
+
 
 combined_results_PG$group <- paste(combined_results_PG$dataset, combined_results_PG$nr_fold)
 PG_prep_rank <- combined_results_PG %>% dplyr::select(group, algorithm, metric) %>% pivot_wider(names_from = algorithm, values_from = metric) %>% rename("id" = group)
@@ -141,6 +192,11 @@ PG_scaled <- cbind(PG_prep_rank[1],
 PG_bayes <- perf_mod(PG_scaled,
                         iter = 20000,
                         seed = 42)
+
+PG_contrasts <- contrast_models(PG_bayes)
+autoplot(PG_contrasts, size = 0.01)
+kable(summary(PG_contrasts, size = 0.01) %>% 
+  dplyr::select(contrast, starts_with("pract")),format = "latex", booktabs = T)
 
 
 
@@ -256,6 +312,7 @@ AUC_results
 dataset_sizes <- sapply(datasets, nrow)
 datasets_numeric_cols = c()
 datasets_nominal_cols = c()
+datasets_prior = c()
 for(i in 1:length(datasets)) {
   datasets_numeric_cols[i]<-sum(sapply(datasets[[i]], function(col) (!is.factor(col)&&!is.character(col))))
   
@@ -269,7 +326,13 @@ for(i in 1:length(datasets)) {
     }
   }
   datasets_nominal_cols[i] <- column_counter
-} # OK
+}
+
+for(i in 1:length(datasets)) {
+  prior <- (table(datasets[[i]]$label)["X1"])[[1]]/dataset_sizes[i]
+  datasets_prior[i] <- prior
+}
+
 
 combined_results_AUC$size <- rep(0, nrow(combined_results_AUC))
 combined_results_Brier$size <- rep(0, nrow(combined_results_AUC))
@@ -280,7 +343,13 @@ combined_results_PG$numeric_cols <- rep(0, nrow(combined_results_AUC))
 combined_results_AUC$nominal_cols <- rep(0, nrow(combined_results_AUC))
 combined_results_Brier$nominal_cols <- rep(0, nrow(combined_results_AUC))
 combined_results_PG$nominal_cols <- rep(0, nrow(combined_results_AUC))
-
+combined_results_AUC$nr_cols <- rep(0, nrow(combined_results_AUC))
+combined_results_Brier$nr_cols <- rep(0, nrow(combined_results_AUC))
+combined_results_PG$nr_cols <- rep(0, nrow(combined_results_AUC))
+combined_results_AUC$prior <- rep(0, nrow(combined_results_AUC))
+combined_results_Brier$prior <- rep(0, nrow(combined_results_AUC))
+combined_results_PG$prior <- rep(0, nrow(combined_results_AUC))
+                                         
 for(i in 1:length(dataset_sizes)) {
   combined_results_AUC$size[((i-1)*90+1):(i*90)] <- rep(dataset_sizes[i], 90)
   combined_results_Brier$size[((i-1)*90+1):(i*90)] <- rep(dataset_sizes[i], 90)
@@ -293,6 +362,14 @@ for(i in 1:length(dataset_sizes)) {
   combined_results_AUC$nominal_cols[((i-1)*90+1):(i*90)] <- rep(datasets_nominal_cols[i], 90)
   combined_results_Brier$nominal_cols[((i-1)*90+1):(i*90)] <- rep(datasets_nominal_cols[i], 90)
   combined_results_PG$nominal_cols[((i-1)*90+1):(i*90)] <- rep(datasets_nominal_cols[i], 90)
+  
+  combined_results_AUC$nr_cols[((i-1)*90+1):(i*90)] <- rep(datasets_nominal_cols[i] + datasets_numeric_cols[i], 90)
+  combined_results_Brier$nr_cols[((i-1)*90+1):(i*90)] <- rep(datasets_nominal_cols[i] + datasets_numeric_cols[i], 90)
+  combined_results_PG$nr_cols[((i-1)*90+1):(i*90)] <- rep(datasets_nominal_cols[i] + datasets_numeric_cols[i], 90)
+  
+  combined_results_AUC$prior[((i-1)*90+1):(i*90)] <- rep(datasets_prior[i], 90)
+  combined_results_Brier$prior[((i-1)*90+1):(i*90)] <- rep(datasets_prior[i], 90)
+  combined_results_PG$prior[((i-1)*90+1):(i*90)] <- rep(datasets_prior[i], 90)
 }
 
 # Compare SRE and LRR
@@ -310,15 +387,15 @@ comparison_PG <- combined_results_PG %>%
   mutate(SRE_better_than_LRR = LRR < SRE)
 
 basetable_AUC <- comparison_AUC %>%
-  dplyr::select(c(size, numeric_cols, nominal_cols, SRE_better_than_LRR)) %>%
+  dplyr::select(c(size, numeric_cols, nominal_cols, nr_cols, prior, SRE_better_than_LRR)) %>%
   mutate(feature_ratio = nominal_cols/numeric_cols) %>%
   mutate(SRE_better_than_LRR = as.factor(SRE_better_than_LRR))
 basetable_Brier <- comparison_Brier %>%
-  dplyr::select(c(size, numeric_cols, nominal_cols, SRE_better_than_LRR)) %>%
+  dplyr::select(c(size, numeric_cols, nominal_cols, nr_cols, prior, SRE_better_than_LRR)) %>%
   mutate(feature_ratio = nominal_cols/numeric_cols) %>%
   mutate(SRE_better_than_LRR = as.factor(SRE_better_than_LRR))
 basetable_PG <- comparison_PG %>%
-  dplyr::select(c(size, numeric_cols, nominal_cols, SRE_better_than_LRR)) %>%
+  dplyr::select(c(size, numeric_cols, nominal_cols, nr_cols, prior, SRE_better_than_LRR)) %>%
   mutate(feature_ratio = nominal_cols/numeric_cols) %>%
   mutate(SRE_better_than_LRR = as.factor(SRE_better_than_LRR))
 
@@ -328,7 +405,7 @@ basetable_PG <- comparison_PG %>%
 AUC_tree <- ctree(SRE_better_than_LRR ~., basetable_AUC, control = ctree_control(testtype = c("Bonferroni"), mincriterion = 0.9)) # 1 node
 Brier_tree <- ctree(SRE_better_than_LRR ~., basetable_Brier, control = ctree_control(testtype = c("Bonferroni"), mincriterion = 0.9)) # 1 node
 PG_tree <- ctree(SRE_better_than_LRR ~., basetable_PG, control = ctree_control(testtype = c("Bonferroni"), mincriterion = 0.9))
-AUC_glm <- glm(SRE_better_than_LRR ~., basetable_AUC, family = binomial()) #difficult to make conclusion
-Brier_glm <- glm(SRE_better_than_LRR ~., basetable_Brier, family = binomial())
-PG_glm <- glm(SRE_better_than_LRR ~., basetable_PG, family = binomial())
 
+plot(AUC_tree, drop_terminal = F, type = "simple")
+plot(Brier_tree, drop_terminal = F, type = "simple")
+plot(PG_tree, drop_terminal = F, type = "simple")
