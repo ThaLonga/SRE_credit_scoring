@@ -196,3 +196,53 @@ fit_rules <- function(dataframe, rules) {
     warning("No rules to fit")
   }
 }
+
+extract_variable_names <- function(condition) {
+  # Extract all words that match column names in the dataframe
+  vars <- unlist(strsplit(condition, " "))
+  vars <- vars[vars %in% names(dataframe)]
+  return(vars)
+}
+
+concatenate_list_of_vectors <- function(list_of_vectors) {
+  # Function to concatenate a single vector with "__"
+  concatenate_with_double_underscore <- function(strings) {
+    concatenated_string <- paste(strings, collapse = "__")
+    return(concatenated_string)
+  }
+  
+  # Apply the concatenation function to each vector in the list
+  concatenated_list <- lapply(list_of_vectors, concatenate_with_double_underscore)
+  return(concatenated_list)
+}
+
+  
+
+fit_rules_SGL <- function(dataframe, rules) {
+  if(!is.null(rules)) {
+    rule_vars <- concatenate_list_of_vectors(lapply(RE_model$finalModel$rules$description, extract_variable_names))
+    # Split the rule into individual conditions
+    conditions <- strsplit(rules, " & ")
+    
+    # Add 'train$' before each condition
+    conditions_with_dataframe <- lapply(conditions, function(x) paste(deparse(substitute(dataframe)),"$", x, sep = ""))
+    
+    # Combine the conditions with ' & ' separator
+    rule_list <- lapply(conditions_with_dataframe, function (x) parse(text = paste(x, collapse = " & ")))
+    
+    train_rules <- dataframe
+    for (i in seq_along(rule_list)) {
+      tryCatch({
+        rule_result <- eval(rule_list[[i]])
+        column_name <- paste0("rule_", i, "_", paste(rule_vars[[i]], collapse="_"))
+        train_rules[column_name] <- rule_result
+      }, error = function(e) {
+        warning(sprintf("Rule %d failed with error: %s", i, e$message))
+        NA
+      })
+    }
+    return(train_rules)
+  } else {
+    warning("No rules to fit")
+  }
+}
