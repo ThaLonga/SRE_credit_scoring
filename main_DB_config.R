@@ -35,40 +35,11 @@ metric_results <- data.frame(
   stringsAsFactors = FALSE
 )
 
-dataset_counter = 1
+
+dataset_counter = 6
 
 
-
-
-fisher_score <- function(predictor, label) {
-  levels <- unique(label)
-  if(length(levels) != 2) stop("Fisher score is only applicable for binary classification")
-  
-  class1 <- label == levels[1]
-  class2 <- label == levels[2]
-  
-  mean1 <- mean(predictor[class1], na.rm = TRUE)
-  mean2 <- mean(predictor[class2], na.rm = TRUE)
-  var1 <- var(predictor[class1], na.rm = TRUE)
-  var2 <- var(predictor[class2], na.rm = TRUE)
-  
-  score <- abs(mean1 - mean2) / sqrt(var1 + var2)
-  return(score)
-}
-
-fisher_score_selection <- function(data) {
-  fisher_scores <- data %>%
-    select(-label) %>%
-    summarise(across(everything(), ~ fisher_score(.x, data$label)))
-  top_n <- min(20, (ncol(data)-1))
-  top_predictors <- names(sort(as.data.frame(fisher_scores)%>%unlist(), decreasing = TRUE)[1:top_n])
-  return(top_predictors)
-}
-
-
-
-
-for(dataset in datasets) {
+for(dataset in datasets[6:7]) {
   
   AUC_results <- metric_results
   Brier_results <- metric_results
@@ -150,7 +121,6 @@ for(dataset in datasets) {
       step_zv(all_predictors())
     
     GAM_recipe <- recipe(label~., data = train) %>%
-      step_downsample(label) %>%
       step_impute_mean(all_numeric_predictors()) %>%
       step_impute_mode(all_string_predictors()) %>%
       step_impute_mode(all_factor_predictors()) %>%
@@ -160,7 +130,9 @@ for(dataset in datasets) {
       step_dummy(all_string_predictors()) %>%
       step_dummy(all_factor_predictors()) %>%
       step_zv(all_predictors()) %>%
-      step_normalize(all_numeric_predictors())
+      step_normalize(all_numeric_predictors()) %>%
+      step_downsample(label)
+      
       
     
     GAM_recipe_train_bake <- recipe(label~., data = train) %>%
@@ -202,9 +174,9 @@ for(dataset in datasets) {
     #####
     print("GAM")
     
-    train_processed <- GAM_recipe_train_bake%>%prep()%>%bake(train)
-    train_processed <- train_processed %>% dplyr::select(any_of(fisher_score_selection(train_processed)), label)
-    test_processed <- GAM_recipe%>%prep()%>%bake(test) %>% dplyr::select(any_of(fisher_score_selection(train_processed)), label)
+    train_processed_ <- GAM_recipe_train_bake%>%prep()%>%bake(train)
+    train_processed <- train_processed %>% dplyr::select(any_of(fisher_score_selection(train_processed_)), label)
+    test_processed <- GAM_recipe%>%prep()%>%bake(test) %>% dplyr::select(any_of(fisher_score_selection(train_processed_)), label)
     
     smooth_vars = colnames(train_processed%>%dplyr::select(-label))[get_splineworthy_columns(train_processed)]
     formula_final <- as.formula(
@@ -225,6 +197,23 @@ for(dataset in datasets) {
       add_recipe(GAM_recipe) %>%
       add_model(GAM_model, formula = formula_final)
     
+    GAM_folds <- tibble()
+    for(k in 1:nrow(inner_folds)) {
+      inner_train_ = GAM_recipe_train_bake %>% prep(training(inner_folds$splits[[k]])) %>% bake(training(inner_folds$splits[[k]]))
+      inner_test_ = GAM_recipe %>% prep(training(inner_folds$splits[[k]])) %>% bake(assessment(inner_folds$splits[[k]]))
+      
+      
+      inner_train <- inner_train_ %>% select(any_of(fisher_score_selection(inner_train_)), label)
+      inner_test <- inner_test_ %>% select(any_of(fisher_score_selection(inner_train_)), label)
+      
+      indices <- list(
+        list(analysis = 1:nrow(inner_train), assessment = (nrow(inner_train)+1):(nrow(inner_train)+nrow(inner_test)))
+      )
+      splits_GAM <- lapply(indices, make_splits, data = rbind(inner_train, inner_test))
+      GAM_split <- manual_rset(splits_RF, c("GAM_split"))
+      GAM_folds <- rbind(GAM_folds, GAM_split)
+    }
+    
     final_GAM_fit <- GAM_wf %>% last_fit(folds$splits[[i]], metrics = metrics)
     
     ############################################################################
@@ -243,7 +232,7 @@ for(dataset in datasets) {
     #tidy
     RF_folds <- tibble()
     for(k in 1:nrow(inner_folds)) {
-      inner_train_ = XGB_recipe %>% prep(training(inner_folds$splits[[k]])) %>% bake(training(inner_folds$splits[[k]]))
+      inner_train_ = XGB_recipe_train_bake %>% prep(training(inner_folds$splits[[k]])) %>% bake(training(inner_folds$splits[[k]]))
       inner_test_ = XGB_recipe %>% prep(training(inner_folds$splits[[k]])) %>% bake(assessment(inner_folds$splits[[k]]))
       
       
@@ -329,7 +318,7 @@ for(dataset in datasets) {
     print("RE")
     
     RE_recipe <- train_bake %>% recipe(label~.) %>% 
-      step_novel(all_nominal_predictors()) %>%
+      #step_novel(all_nominal_predictors()) %>%
       step_zv(all_predictors())
     
     set.seed(innerseed)
@@ -372,8 +361,8 @@ for(dataset in datasets) {
     RE_model_PG <- train(RE_recipe, data = train_bake, method = "pre",
                          ntrees = 100, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
                          tuneGrid = getModelInfo("pre")[[1]]$grid( 
-                           maxdepth = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(maxdepth))[[1]],
-                           learnrate = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(learnrate))[[1]],
+                           maxdepth = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(maxdepth)%>%slice_head())[[1]],
+                           learnrate = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(learnrate)%>%slice_head())[[1]],
                            penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
                            sampfrac = 1,
                            use.grad = TRUE), ad.alpha = 0, singleconditions = TRUE,
@@ -436,18 +425,8 @@ for(dataset in datasets) {
         set_engine("mgcv")
       
       inner_GAM_recipe <- recipe(label~., data = inner_train_gam_processed) %>%
-        step_downsample(label) %>%
-        step_impute_mean(all_numeric_predictors()) %>%
-        step_impute_mode(all_string_predictors()) %>%
-        step_impute_mode(all_factor_predictors()) %>%
-        #step_hai_winsorized_truncate(all_numeric_predictors(), fraction = 0.025) %>%
-        #step_rm(!contains("winsorized") & all_numeric_predictors()) %>%
-        step_novel(all_nominal_predictors()) %>%
-        step_dummy(all_string_predictors()) %>%
-        step_dummy(all_factor_predictors()) %>%
-        step_zv(all_predictors()) %>%
-        step_normalize(all_numeric_predictors())
-      
+        step_zv(all_predictors())
+
       GAM_wf <- workflow() %>%
         add_recipe(inner_GAM_recipe)%>%
         add_model(GAM_model, formula = formula)
@@ -828,10 +807,10 @@ for(dataset in datasets) {
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
     
   }
-  write.csv(AUC_results, file = paste("./results_supp/",dataset_vector[dataset_counter],"_AUC_DB_config.csv", sep = ""))
-  write.csv(Brier_results, file = paste("./results_supp/",dataset_vector[dataset_counter],"_BRIER_DB_config.csv", sep = ""))
+  write.csv(AUC_results, file = paste("./results_DB/",dataset_vector[dataset_counter],"_AUC_DB_config.csv", sep = ""))
+  write.csv(Brier_results, file = paste("./results_DB/",dataset_vector[dataset_counter],"_BRIER_DB_config.csv", sep = ""))
   PG_results$metric<-unlist(PG_results$metric)
-  write.csv(PG_results, file = paste("./results_supp/",dataset_vector[dataset_counter],"_PG_DB_config.csv", sep = ""))
+  write.csv(PG_results, file = paste("./results_DB/",dataset_vector[dataset_counter],"_PG_DB_config.csv", sep = ""))
   
   dataset_counter <- dataset_counter + 1
 }
