@@ -672,12 +672,83 @@ for(dataset in datasets) {
 ##############TESTING ZONE
 
 train_SGL <- SRE_recipe_AUC%>%prep(training(SRE_split_AUC$splits[[1]])) %>% bake(training(SRE_split_AUC$splits[[1]]))
+fit_rules_SGL(train_SGL, RE_model$finalModel$rules$description)
+names(SRE_train_rules_AUC)
+
+
+group_terms_by_variables <- function(terms, original_vars) {
+  # Initialize a list to hold the groups
+  grouped_terms <- list()
+  
+  # Function to find the original variables in a term
+  find_variables <- function(term, original_vars) {
+    sapply(original_vars, function(var) grepl(paste0("(\\b|_)", var, "(\\b|_)"), term))
+  }
+  
+  # Loop through each term
+  for (term in terms) {
+    # Find which original variables are in the term
+    contains_vars <- original_vars[find_variables(term, original_vars)]
+    
+    # Convert to a sorted, comma-separated string to use as a list key
+    key <- paste(sort(contains_vars), collapse = ",")
+    
+    # Add the term to the corresponding group
+    if (key %in% names(grouped_terms)) {
+      grouped_terms[[key]] <- c(grouped_terms[[key]], term)
+    } else {
+      grouped_terms[[key]] <- term
+    }
+  }
+  
+  names(grouped_terms) <- seq(1:length(grouped_terms))
+  
+  for (term_c in 1:length(terms)) {
+    column_name <- terms[term_c]
+    
+    # Find the group that this column name belongs to
+    group_name <- NULL
+    for (group in names(grouped_terms)) {
+      if (column_name %in% grouped_terms[[group]]) {
+        group_name <- group
+        break
+      }
+    }
+    
+    # Append the group name to the groups vector
+    groups <- c(groups, group_name)
+  }
+  
+  return(groups)
+}
+
+
+testgroups <- group_terms_by_variables(names(SRE_train_rules_AUC%>%select(-label)), names(train%>%select(-label)))
+names(testgroups) <- seq(1:length(testgroups))
+groups <- c()
+
+for (term_c in 1:length(names(SRE_train_rules_AUC %>% select(-label)))) {
+  column_name <- names(SRE_train_rules_AUC %>% select(-label))[term_c]
+  
+  # Find the group that this column name belongs to
+  group_name <- NULL
+  for (group in names(testgroups)) {
+    if (column_name %in% testgroups[[group]]) {
+      group_name <- group
+      break
+    }
+  }
+  
+  # Append the group name to the groups vector
+  groups <- c(groups, group_name)
+}
 
 
 
+vec <- as.numeric(testgroups)
+x <- rbind(SRE_train_rules_AUC%>%select(-label), vec)
 
-
-
+group_glm <- cv.sparsegl(as.matrix((SRE_train_rules_AUC%>%select(-label))[, order(vec)]), SRE_train_rules_AUC$label, sort(vec), family = "binomial")
 
 
 

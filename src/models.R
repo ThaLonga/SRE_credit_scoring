@@ -2,7 +2,7 @@
 #returns predictions
 
 get_splineworthy_columns <- function(X) {
-  return((lapply(X, n_distinct)>9) & unlist(lapply(X, is.numeric)))
+  return((lapply(X, n_distinct)>15) & unlist(lapply(X, is.numeric)))
 }
 
 #PG: cutoff = max probability of default
@@ -197,12 +197,7 @@ fit_rules <- function(dataframe, rules) {
   }
 }
 
-extract_variable_names <- function(condition) {
-  # Extract all words that match column names in the dataframe
-  vars <- unlist(strsplit(condition, " "))
-  vars <- vars[vars %in% names(dataframe)]
-  return(vars)
-}
+
 
 concatenate_list_of_vectors <- function(list_of_vectors) {
   # Function to concatenate a single vector with "__"
@@ -219,6 +214,12 @@ concatenate_list_of_vectors <- function(list_of_vectors) {
   
 
 fit_rules_SGL <- function(dataframe, rules) {
+  extract_variable_names <- function(condition) {
+    # Extract all words that match column names in the dataframe
+    vars <- unlist(strsplit(condition, " "))
+    vars <- vars[vars %in% names(dataframe)]
+    return(vars)
+  }
   if(!is.null(rules)) {
     rule_vars <- concatenate_list_of_vectors(lapply(RE_model$finalModel$rules$description, extract_variable_names))
     # Split the rule into individual conditions
@@ -246,3 +247,75 @@ fit_rules_SGL <- function(dataframe, rules) {
     warning("No rules to fit")
   }
 }
+
+fisher_score <- function(predictor, label) {
+  levels <- unique(label)
+  if(length(levels) != 2) stop("Fisher score is only applicable for binary classification")
+  
+  class1 <- label == levels[1]
+  class2 <- label == levels[2]
+  
+  mean1 <- mean(predictor[class1], na.rm = TRUE)
+  mean2 <- mean(predictor[class2], na.rm = TRUE)
+  var1 <- var(predictor[class1], na.rm = TRUE)
+  var2 <- var(predictor[class2], na.rm = TRUE)
+  
+  score <- abs(mean1 - mean2) / sqrt(var1 + var2)
+  return(score)
+}
+
+fisher_score_selection <- function(data) {
+  fisher_scores <- data %>%
+    select(-label) %>%
+    summarise(across(everything(), ~ fisher_score(.x, data$label)))
+  top_n <- min(20, (ncol(data)-1))
+  top_predictors <- names(sort(as.data.frame(fisher_scores)%>%unlist(), decreasing = TRUE)[1:top_n])
+  return(top_predictors)
+}
+
+group_terms_by_variables <- function(terms, original_vars) {
+  # Initialize a list to hold the groups
+  grouped_terms <- list()
+  
+  # Function to find the original variables in a term
+  find_variables <- function(term, original_vars) {
+    sapply(original_vars, function(var) grepl(paste0("(\\b|_)", var, "(\\b|_)"), term))
+  }
+  
+  # Loop through each term
+  for (term in terms) {
+    # Find which original variables are in the term
+    contains_vars <- original_vars[find_variables(term, original_vars)]
+    
+    # Convert to a sorted, comma-separated string to use as a list key
+    key <- paste(sort(contains_vars), collapse = ",")
+    
+    # Add the term to the corresponding group
+    if (key %in% names(grouped_terms)) {
+      grouped_terms[[key]] <- c(grouped_terms[[key]], term)
+    } else {
+      grouped_terms[[key]] <- term
+    }
+  }
+  
+  names(grouped_terms) <- seq(1:length(grouped_terms))
+  
+  for (term_c in 1:length(terms)) {
+    column_name <- terms[term_c]
+    
+    # Find the group that this column name belongs to
+    group_name <- NULL
+    for (group in names(grouped_terms)) {
+      if (column_name %in% grouped_terms[[group]]) {
+        group_name <- group
+        break
+      }
+    }
+    
+    # Append the group name to the groups vector
+    groups <- c(groups, group_name)
+  }
+  
+  return(groups)
+}
+
