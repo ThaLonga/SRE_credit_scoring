@@ -608,7 +608,7 @@ for(dataset in datasets) {
         add_recipe(GAM_recipe) %>%
         add_model(GAM_model, formula = formula)
       
-      final_GAM_fit_inner <- GAM_wf %>% last_fit(folds$splits[[i]], metrics = metrics)
+      final_GAM_fit_inner <- GAM_wf %>% last_fit(inner_folds$splits[[i]], metrics = metrics)
       
       
       # Extract and fitted values for each smooth term

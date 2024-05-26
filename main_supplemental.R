@@ -35,7 +35,7 @@ metric_results <- data.frame(
   stringsAsFactors = FALSE
 )
 
-dataset_counter = 5
+dataset_counter = 1
 
 for(dataset in datasets) {
   

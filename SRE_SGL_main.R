@@ -208,7 +208,7 @@ for(dataset in datasets) {
     
     #Brier
     RE_model_Brier <- train(XGB_recipe, data = train, method = "pre",
-                            ntrees = min(100, round(nrow(train)/2)), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+                            ntrees = min(500, round(nrow(train)/2)), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
                             tuneGrid = getModelInfo("pre")[[1]]$grid( 
                               maxdepth = (RE_model$results%>%slice_max(Brier)%>%dplyr::select(maxdepth))[[1]],
                               learnrate = (RE_model$results%>%slice_max(Brier)%>%dplyr::select(learnrate))[[1]],
@@ -227,7 +227,7 @@ for(dataset in datasets) {
     
     #PG
     RE_model_PG <- train(XGB_recipe, data = train, method = "pre",
-                         ntrees = min(100, round(nrow(train)/2)), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+                         ntrees = min(500, round(nrow(train)/2)), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
                          tuneGrid = getModelInfo("pre")[[1]]$grid( 
                            maxdepth = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(maxdepth))[[1]],
                            learnrate = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(learnrate))[[1]],
@@ -251,9 +251,9 @@ for(dataset in datasets) {
     #######
     # inner SRE loop for hyperparameter tuning (glmnet)
     
-    full_metrics_AUC <- list()
-    full_metrics_Brier <- list()
-    full_metrics_PG <- list()
+    lambdas_AUC <- c()
+    lambdas_Brier <- c()
+    lambdas_PG <- c()
     
     for(k in 1:nrow(inner_folds)) {
       cat("SRE inner fold", k, "/ 5 \n")
@@ -290,7 +290,7 @@ for(dataset in datasets) {
         add_recipe(GAM_recipe) %>%
         add_model(GAM_model, formula = formula)
       
-      final_GAM_fit_inner <- GAM_wf %>% last_fit(folds$splits[[i]], metrics = metrics)
+      final_GAM_fit_inner <- GAM_wf %>% last_fit(inner_folds$splits[[i]], metrics = metrics)
       
       
       # Extract and fitted values for each smooth term
@@ -389,110 +389,44 @@ for(dataset in datasets) {
         step_normalize(all_of(setdiff(!!normalizable_PG, colnames(!!training(SRE_split_PG$splits[[1]])[!!winsorizable_PG])))) %>%
         step_zv()
       
-      ####### 
-      # Fit regular lasso for AUC, Brier, PG
-      SRE_model <- 
-        parsnip::logistic_reg(
-          mode = "classification",
-          mixture = 1,
-          penalty = tune()
-        ) %>%
-        set_engine("glmnet")
       
-      SRE_wf_AUC <- workflow() %>%
-        add_recipe(SRE_recipe_AUC) %>%
-        add_model(SRE_model)
-      SRE_wf_Brier <- workflow() %>%
-        add_recipe(SRE_recipe_Brier) %>%
-        add_model(SRE_model)
-      SRE_wf_PG <- workflow() %>%
-        add_recipe(SRE_recipe_PG) %>%
-        add_model(SRE_model)
+      AUC_inner_SGL_table_train <- SRE_recipe_AUC %>%prep()%>% bake(training(SRE_split_AUC$splits[[1]]))
+      Brier_inner_SGL_table_train <- SRE_recipe_Brier %>%prep()%>% bake(training(SRE_split_Brier$splits[[1]]))
+      PG_inner_SGL_table_train <- SRE_recipe_PG %>%prep()%>% bake(training(SRE_split_PG$splits[[1]]))
+      
+      AUC_inner_SGL_table_test <- SRE_recipe_AUC %>%prep()%>% bake(assessment(SRE_split_AUC$splits[[1]]))
+      Brier_inner_SGL_table_test <- SRE_recipe_Brier %>%prep()%>% bake(assessment(SRE_split_Brier$splits[[1]]))
+      PG_inner_SGL_table_test <- SRE_recipe_PG %>%prep()%>% bake(assessment(SRE_split_PG$splits[[1]]))
+      
+      AUC_inner_SGL_table_train_x <- AUC_inner_SGL_table_train %>% select(-label)
+      Brier_inner_SGL_table_train_x <- Brier_inner_SGL_table_train %>% select(-label)
+      PG_inner_SGL_table_train_x <- PG_inner_SGL_table_train %>% select(-label)
+      
+      AUC_inner_groups <- group_terms_by_variables(names(AUC_inner_SGL_table_train_x), names(train))
+      Brier_inner_groups <- group_terms_by_variables(names(Brier_inner_SGL_table_train_x), names(train))
+      PG_inner_groups <- group_terms_by_variables(names(PG_inner_SGL_table_train_x), names(train))
       
       
-      SRE_tuned_AUC <- tune::tune_grid(
-        object = SRE_wf_AUC,
-        resamples = SRE_split_AUC,
-        grid = hyperparameters_SRE_tidy, 
-        metrics = metrics,
-        control = tune::control_grid(verbose = TRUE, save_pred = TRUE))
-      SRE_tuned_Brier <- tune::tune_grid(
-        object = SRE_wf_Brier,
-        resamples = SRE_split_Brier,
-        grid = hyperparameters_SRE_tidy, 
-        metrics = metrics,
-        control = tune::control_grid(verbose = TRUE, save_pred = TRUE))
-      SRE_tuned_PG <- tune::tune_grid(
-        object = SRE_wf_PG,
-        resamples = SRE_split_PG,
-        grid = hyperparameters_SRE_tidy, 
-        metrics = metrics,
-        control = tune::control_grid(verbose = TRUE, save_pred = TRUE))
+      group_glm_AUC <- cv.sparsegl(as.matrix(AUC_inner_SGL_table_train_x)[, order(AUC_inner_groups)], AUC_inner_SGL_table_train$label, sort(AUC_inner_groups), family = "binomial")
+      group_glm_Brier <- cv.sparsegl(as.matrix(Brier_inner_SGL_table_train_x)[, order(Brier_inner_groups)], Brier_inner_SGL_table_train$label, sort(Brier_inner_groups), family = "binomial")
+      group_glm_PG <- cv.sparsegl(as.matrix(PG_inner_SGL_table_train_x)[, order(PG_inner_groups)], PG_inner_SGL_table_train$label, sort(PG_inner_groups), family = "binomial")
       
-      #for auc, brier
-      metrics_SRE_AUC <- SRE_tuned_AUC$.metrics[[1]]
-      metrics_SRE_Brier <- SRE_tuned_Brier$.metrics[[1]]
-      metrics_SRE_AUC$fold <- rep(k, nrow(metrics_SRE_AUC))
-      metrics_SRE_Brier$fold <- rep(k, nrow(metrics_SRE_Brier))
       
-      full_metrics_AUC <- rbind(full_metrics_AUC, metrics_SRE_AUC)
-      full_metrics_Brier <- rbind(full_metrics_Brier, metrics_SRE_Brier)
+      lambdas_AUC <- c(lambdas_AUC, group_glm_AUC$lambda.min)
+      lambdas_Brier <- c(lambdas_Brier, group_glm_Brier$lambda.min)
+      lambdas_PG <- c(lambdas_PG, group_glm_PG$lambda.min)
       
-      #for pg
-      metrics_SRE_PG <- suppressMessages(SRE_tuned_PG%>%collect_predictions(summarize = FALSE) %>%
-                                           group_by(id, penalty, .config) %>%
-                                           summarise(partial_gini = partialGini(.pred_X1, label)))
-      metrics_SRE_PG$fold <- rep(k, nrow(metrics_SRE_PG))
       
-      full_metrics_PG <- rbind(full_metrics_PG, metrics_SRE_PG)
     }
     
     print("hyperparameters found")
     
     ####### 
-    # Hyperparameter extraction, we use lambda.1se  = lambda.min + 1se
-    aggregated_metrics_AUC <- full_metrics_AUC %>% group_by(penalty, .config, .metric) %>%
-      summarise(mean_perf = mean(.estimate))
-    aggregated_metrics_Brier <- full_metrics_Brier %>% group_by(penalty, .config, .metric) %>%
-      summarise(mean_perf = mean(.estimate))
-    aggregated_metrics_PG <- full_metrics_PG %>% group_by(penalty, .config) %>%
-      summarise(mean_perf = mean(partial_gini))
     
-    best_lambda_auc <- aggregated_metrics_AUC %>% filter(.metric=="roc_auc") %>% ungroup() %>% slice_max(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
-    best_lambda_brier <- aggregated_metrics_Brier %>% filter(.metric=="brier_class") %>% ungroup() %>% slice_min(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
-    best_lambda_pg <- aggregated_metrics_PG %>% ungroup() %>% slice_max(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
+    best_lambda_auc <- mean(lambdas_AUC)
+    best_lambda_Brier <- mean(lambdas_Brier)
+    best_lambda_PG <- mean(lambdas_PG)
     
-    lambda_sd_auc <- sd(unlist(
-      full_metrics_AUC %>% filter(.metric=="roc_auc") %>%
-        group_by(fold) %>%
-        slice_max(.estimate) %>%
-        slice_head() %>%
-        ungroup() %>%
-        dplyr::select(penalty)    
-    ))
-    
-    lambda_sd_brier <- sd(unlist(
-      full_metrics_Brier %>% filter(.metric=="brier_class") %>%
-        group_by(fold) %>%
-        slice_min(.estimate) %>%
-        slice_head() %>%
-        ungroup() %>%
-        dplyr::select(penalty)    
-    ))
-    
-    lambda_sd_pg <- sd(unlist(
-      full_metrics_PG %>% 
-        group_by(fold) %>%
-        slice_max(partial_gini) %>%
-        slice_head() %>%
-        ungroup() %>%
-        dplyr::select(penalty)    
-    ))
-    
-    
-    lambda_1se_auc <- best_lambda_auc + lambda_sd_auc
-    lambda_1se_brier <- best_lambda_brier + lambda_sd_brier
-    lambda_1se_pg <- best_lambda_pg + lambda_sd_pg
     
     
     ####### 
@@ -596,66 +530,49 @@ for(dataset in datasets) {
       step_normalize(all_of(setdiff(!!normalizable_PG, colnames(!!training(SRE_split_PG$splits[[1]])[!!winsorizable_PG])))) %>%
       step_zv()
     
-    ####### 
-    # Fit regular lasso for AUC, Brier, PG and extract metrics
-    SRE_model_auc <- 
-      parsnip::logistic_reg(
-        mode = "classification",
-        mixture = 1,
-        penalty = lambda_1se_auc
-      ) %>%
-      set_engine("glmnet")
     
-    SRE_wf_auc <- workflow() %>%
-      #add_formula(label~.) %>%
-      add_recipe(SRE_recipe_AUC) %>%
-      add_model(SRE_model_auc)
+    AUC_SGL_table_train <- SRE_recipe_AUC %>%prep()%>% bake(training(SRE_split_AUC$splits[[1]]))
+    Brier_SGL_table_train <- SRE_recipe_Brier %>%prep()%>% bake(training(SRE_split_Brier$splits[[1]]))
+    PG_SGL_table_train <- SRE_recipe_PG %>%prep()%>% bake(training(SRE_split_PG$splits[[1]]))
     
-    SRE_model_brier <- 
-      parsnip::logistic_reg(
-        mode = "classification",
-        mixture = 1,
-        penalty = lambda_1se_brier
-      ) %>%
-      set_engine("glmnet")
+    AUC_SGL_table_test <- SRE_recipe_AUC %>%prep()%>% bake(assessment(SRE_split_AUC$splits[[1]]))
+    Brier_SGL_table_test <- SRE_recipe_Brier %>%prep()%>% bake(assessment(SRE_split_Brier$splits[[1]]))
+    PG_SGL_table_test <- SRE_recipe_PG %>%prep()%>% bake(assessment(SRE_split_PG$splits[[1]]))
     
-    SRE_wf_brier <- workflow() %>%
-      #add_formula(label~.) %>%
-      add_recipe(SRE_recipe_Brier) %>%
-      add_model(SRE_model_brier)    
+    AUC_SGL_table_train_x <- AUC_SGL_table_train %>% select(-label)
+    Brier_SGL_table_train_x <- Brier_SGL_table_train %>% select(-label)
+    PG_SGL_table_train_x <- PG_SGL_table_train %>% select(-label)
     
-    SRE_model_pg <- 
-      parsnip::logistic_reg(
-        mode = "classification",
-        mixture = 1,
-        penalty = best_lambda_pg    #sd can be very high for PG resulting in way too high lambda, leaving only the intercept
-      ) %>%
-      set_engine("glmnet")
+    AUC_groups <- group_terms_by_variables(names(AUC_SGL_table_train_x), names(train))
+    Brier_groups <- group_terms_by_variables(names(Brier_SGL_table_train_x), names(train))
+    PG_groups <- group_terms_by_variables(names(PG_SGL_table_train_x), names(train))
     
-    SRE_wf_pg <- workflow() %>%
-      #add_formula(label~.) %>%
-      add_recipe(SRE_recipe_PG) %>%
-      add_model(SRE_model_pg)    
     
-    final_SRE_fit_auc <- SRE_wf_auc %>% last_fit(SRE_split_AUC$splits[[1]], metrics = metrics)
-    final_SRE_fit_brier <- SRE_wf_brier %>% last_fit(SRE_split_Brier$splits[[1]], metrics = metrics)
-    final_SRE_fit_pg <- SRE_wf_pg %>% last_fit(SRE_split_PG$splits[[1]], metrics = metrics)
+    group_glm_AUC <- cv.sparsegl(as.matrix(AUC_SGL_table_train_x)[, order(AUC_groups)], AUC_SGL_table_train$label, sort(AUC_groups), family = "binomial")
+    group_glm_Brier <- sparsegl(as.matrix(Brier_SGL_table_train_x)[, order(Brier_groups)], Brier_SGL_table_train$label, sort(Brier_groups), family = "binomial", lambda = best_lambda_Brier)
+    group_glm_PG <- sparsegl(as.matrix(PG_SGL_table_train_x)[, order(PG_groups)], PG_SGL_table_train$label, sort(PG_groups), family = "binomial", lambda = best_lambda_PG)
     
-    auc <- final_SRE_fit_auc %>%
-      collect_metrics() %>%
-      filter(.metric == "roc_auc") %>%
-      pull(.estimate)
-    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", auc)
+
+    SRE_SGL_preds_AUC <- as.data.frame(predict(group_glm_AUC, as.matrix(AUC_SGL_table_test%>%select(-label)), type = 'response'))
+    SRE_SGL_preds_Brier <- as.data.frame(predict(group_glm_Brier, as.matrix(Brier_SGL_table_test%>%select(-label)), type = 'response'))
+    SRE_SGL_preds_PG <- as.data.frame(predict(group_glm_PG, as.matrix(PG_SGL_table_test%>%select(-label)), type = 'response'))
     
-    brier <- final_SRE_fit_brier %>%
-      collect_metrics() %>%
-      filter(.metric == "brier_class") %>%
-      pull(.estimate)
-    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", brier)
+    names(SRE_SGL_preds_AUC) = names(SRE_SGL_preds_Brier) = names(SRE_SGL_preds_PG)="X1"
     
-    pg <- final_SRE_fit_pg %>%
-      collect_pg()
-    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE", pg)
+    SRE_SGL_preds_AUC$label <- test$label
+    SRE_SGL_preds_Brier$label <- test$label
+    SRE_SGL_preds_PG$label <- test$label
+    
+    g <- roc(label ~ X1, data = SRE_SGL_preds_AUC, direction = "<")
+    AUC <- g$auc
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", AUC)
+    
+    brier <- brier_score(SRE_SGL_preds_Brier$label, SRE_SGL_preds_Brier$X1)
+    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", brier)
+    
+    pg <- partialGini(SRE_SGL_preds_AUC$X1, SRE_SGL_preds_AUC$label)
+    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", pg)
+    
   }
   write.csv(AUC_results, file = paste("./results/",dataset_vector[dataset_counter],"_AUC.csv", sep = ""))
   write.csv(Brier_results, file = paste("./results/",dataset_vector[dataset_counter],"_BRIER.csv", sep = ""))

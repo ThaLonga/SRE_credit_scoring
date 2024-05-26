@@ -39,7 +39,7 @@ metric_results <- data.frame(
 dataset_counter = 6
 
 
-for(dataset in datasets[6:7]) {
+for(dataset in datasets) {
   
   AUC_results <- metric_results
   Brier_results <- metric_results
@@ -175,7 +175,7 @@ for(dataset in datasets[6:7]) {
     print("GAM")
     
     train_processed_ <- GAM_recipe_train_bake%>%prep()%>%bake(train)
-    train_processed <- train_processed %>% dplyr::select(any_of(fisher_score_selection(train_processed_)), label)
+    train_processed <- train_processed_ %>% dplyr::select(any_of(fisher_score_selection(train_processed_)), label)
     test_processed <- GAM_recipe%>%prep()%>%bake(test) %>% dplyr::select(any_of(fisher_score_selection(train_processed_)), label)
     
     smooth_vars = colnames(train_processed%>%dplyr::select(-label))[get_splineworthy_columns(train_processed)]
@@ -210,7 +210,7 @@ for(dataset in datasets[6:7]) {
         list(analysis = 1:nrow(inner_train), assessment = (nrow(inner_train)+1):(nrow(inner_train)+nrow(inner_test)))
       )
       splits_GAM <- lapply(indices, make_splits, data = rbind(inner_train, inner_test))
-      GAM_split <- manual_rset(splits_RF, c("GAM_split"))
+      GAM_split <- manual_rset(splits_GAM, c("GAM_split"))
       GAM_folds <- rbind(GAM_folds, GAM_split)
     }
     

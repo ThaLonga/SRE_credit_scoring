@@ -316,6 +316,6 @@ group_terms_by_variables <- function(terms, original_vars) {
     groups <- c(groups, group_name)
   }
   
-  return(groups)
+  return(as.numeric(groups))
 }
 
