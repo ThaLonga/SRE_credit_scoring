@@ -130,14 +130,13 @@ table <- as.tibble(lapply(table, function(x) {
 }))
 colnames(table) <- c("Algorithm", "AUC", "Brier", "PG")
 table_latex <- kable(table, "latex", booktabs = T)
-str_replace_all(table_latex, stringr::fixed(c("("="\textit{(", ")" = ")}")))
 
 #####
 # Bayesian signed rank test (Benavoli et al., 2017)
 combined_results_AUC$group <- paste(combined_results_AUC$dataset, combined_results_AUC$nr_fold)
 AUC_prep_rank <- combined_results_AUC %>% dplyr::select(group, algorithm, metric) %>% pivot_wider(names_from = algorithm, values_from = metric) %>% rename("id" = group)
 AUC_bayes <- perf_mod(AUC_prep_rank,
-                      iter = 30000,
+                      iter = 20000,
                       seed = 42)
 
 AUC_SRE_RE <- contrast_models(AUC_bayes, c(rep('SRE',4), rep('RE', 4)), rep(c('LRR', 'RF', 'RE', 'SRE'),2))
@@ -170,7 +169,7 @@ max_Brier <- Brier_prep_rank %>% dplyr::select(where(is.numeric)) %>% apply(1,ma
 Brier_scaled <- cbind(Brier_prep_rank[1],
                      0.5 + 0.5*(Brier_prep_rank[-1]/max_Brier))
 Brier_bayes <- perf_mod(Brier_scaled, #NORMALISEREN
-                      iter = 30000,
+                      iter = 20000,
                       seed = 42)
 
 Brier_SRE_RE <- contrast_models(Brier_bayes, 'SRE', 'RE')
@@ -200,7 +199,7 @@ max_PG <- PG_prep_rank %>% dplyr::select(where(is.numeric)) %>% apply(1,max)
 PG_scaled <- cbind(PG_prep_rank[1],
                       0.5 + 0.5*(PG_prep_rank[-1]/max_PG))
 PG_bayes <- perf_mod(PG_scaled,
-                        iter = 30000,
+                        iter = 20000,
                         seed = 42)
 
 PG_contrasts <- contrast_models(PG_bayes)
@@ -211,16 +210,16 @@ kable(summary(PG_contrasts, size = 0.01) %>%
 
 
 #Compare important algorithms
-control <- c(rep('RE',3), rep('SRE',3))
-compare <- c("LRR", "RF", "SRE", "LRR", "RF", "RE")
+control <- c(rep('RE',4), rep('SRE',4))
+compare <- c("LRR", "RF", "PLTR", "SRE", "LRR", "RF", "PLTR", "RE")
 
 control_small <- rep('SRE',2)
 compare_small <- c("LRR", "RF")
 
 
 AUC_comparison <- contrast_models(AUC_bayes, 
-                                  control,
-                                  compare)
+                                  control_small,
+                                  compare_small)
 plots <- autoplot(AUC_comparison, size = 0.01) +
   facet_wrap(~contrast, scales = "free", nrow = 1)
 print(plots)
@@ -231,8 +230,8 @@ kable(summary(AUC_comparison, size = 0.01) %>%
 
 
 Brier_comparison <- contrast_models(Brier_bayes, 
-                                  control_small,
-                                  compare_small)
+                                    control_small,
+                                    compare_small)
 #kable(comparison_Brier, "latex", booktabs = T)
 plots <- autoplot(Brier_comparison, size = 0.01) +
   facet_wrap(~contrast, scales = "free", nrow = 1)
@@ -245,8 +244,8 @@ kable(summary(Brier_comparison, size = 0.01) %>%
 
 
 PG_comparison <- contrast_models(PG_bayes, 
-                                  control_small,
-                                  compare_small)
+                                 control_small,
+                                 compare_small)
 
 plots <- autoplot(PG_comparison, size = 0.01) +
   facet_wrap(~contrast, scales = "free", nrow = 1)
@@ -322,7 +321,9 @@ AUC_results
 dataset_sizes <- sapply(datasets, nrow)
 datasets_numeric_cols = c()
 datasets_nominal_cols = c()
+datasets_proportion_nominal_cols = c()
 datasets_prior = c()
+datasets_cor = c()
 for(i in 1:length(datasets)) {
   datasets_numeric_cols[i]<-sum(sapply(datasets[[i]], function(col) (!is.factor(col)&&!is.character(col))))
   
@@ -336,11 +337,19 @@ for(i in 1:length(datasets)) {
     }
   }
   datasets_nominal_cols[i] <- column_counter
+  datasets_proportion_nominal_cols[i] <- column_counter/ncol(datasets[[i]]%>%select(-label))
 }
 
 for(i in 1:length(datasets)) {
   prior <- (table(datasets[[i]]$label)["X1"])[[1]]/dataset_sizes[i]
   datasets_prior[i] <- prior
+}
+
+for(i in 1:length(datasets)) {
+  dummy_creator <- recipe(label ~., datasets[[i]]) %>% step_naomit(all_predictors(), skip = F) %>% step_dummy(all_nominal_predictors()) %>% step_nzv(all_predictors())%>% prep()
+  cordata <- dummy_creator %>% bake(datasets[[i]])
+  abscor <- corr_abs(cordata%>%select(-label), cordata$label )
+  datasets_cor[i] <- abscor
 }
 
 
@@ -353,13 +362,19 @@ combined_results_PG$numeric_cols <- rep(0, nrow(combined_results_AUC))
 combined_results_AUC$nominal_cols <- rep(0, nrow(combined_results_AUC))
 combined_results_Brier$nominal_cols <- rep(0, nrow(combined_results_AUC))
 combined_results_PG$nominal_cols <- rep(0, nrow(combined_results_AUC))
+combined_results_AUC$proportion_nominal_cols <- rep(0, nrow(combined_results_AUC))
+combined_results_Brier$proportion_nominal_cols <- rep(0, nrow(combined_results_AUC))
+combined_results_PG$proportion_nominal_cols <- rep(0, nrow(combined_results_AUC))
 combined_results_AUC$nr_cols <- rep(0, nrow(combined_results_AUC))
 combined_results_Brier$nr_cols <- rep(0, nrow(combined_results_AUC))
 combined_results_PG$nr_cols <- rep(0, nrow(combined_results_AUC))
 combined_results_AUC$prior <- rep(0, nrow(combined_results_AUC))
 combined_results_Brier$prior <- rep(0, nrow(combined_results_AUC))
 combined_results_PG$prior <- rep(0, nrow(combined_results_AUC))
-                                         
+combined_results_AUC$cor <- rep(0, nrow(combined_results_AUC))
+combined_results_Brier$cor <- rep(0, nrow(combined_results_AUC))
+combined_results_PG$cor <- rep(0, nrow(combined_results_AUC))
+
 for(i in 1:length(dataset_sizes)) {
   combined_results_AUC$size[((i-1)*90+1):(i*90)] <- rep(dataset_sizes[i], 90)
   combined_results_Brier$size[((i-1)*90+1):(i*90)] <- rep(dataset_sizes[i], 90)
@@ -372,6 +387,10 @@ for(i in 1:length(dataset_sizes)) {
   combined_results_AUC$nominal_cols[((i-1)*90+1):(i*90)] <- rep(datasets_nominal_cols[i], 90)
   combined_results_Brier$nominal_cols[((i-1)*90+1):(i*90)] <- rep(datasets_nominal_cols[i], 90)
   combined_results_PG$nominal_cols[((i-1)*90+1):(i*90)] <- rep(datasets_nominal_cols[i], 90)
+
+  combined_results_AUC$proportion_nominal_cols[((i-1)*90+1):(i*90)] <- rep(datasets_proportion_nominal_cols[i], 90)
+  combined_results_Brier$proportion_nominal_cols[((i-1)*90+1):(i*90)] <- rep(datasets_proportion_nominal_cols[i], 90)
+  combined_results_PG$proportion_nominal_cols[((i-1)*90+1):(i*90)] <- rep(datasets_proportion_nominal_cols[i], 90)
   
   combined_results_AUC$nr_cols[((i-1)*90+1):(i*90)] <- rep(datasets_nominal_cols[i] + datasets_numeric_cols[i], 90)
   combined_results_Brier$nr_cols[((i-1)*90+1):(i*90)] <- rep(datasets_nominal_cols[i] + datasets_numeric_cols[i], 90)
@@ -380,6 +399,10 @@ for(i in 1:length(dataset_sizes)) {
   combined_results_AUC$prior[((i-1)*90+1):(i*90)] <- rep(datasets_prior[i], 90)
   combined_results_Brier$prior[((i-1)*90+1):(i*90)] <- rep(datasets_prior[i], 90)
   combined_results_PG$prior[((i-1)*90+1):(i*90)] <- rep(datasets_prior[i], 90)
+  
+  combined_results_AUC$cor[((i-1)*90+1):(i*90)] <- rep(datasets_cor[i], 90)
+  combined_results_Brier$cor[((i-1)*90+1):(i*90)] <- rep(datasets_cor[i], 90)
+  combined_results_PG$cor[((i-1)*90+1):(i*90)] <- rep(datasets_cor[i], 90)
 }
 
 # Compare SRE and LRR
@@ -397,15 +420,15 @@ comparison_PG <- combined_results_PG %>%
   mutate(SRE_better_than_LRR = LRR < SRE)
 
 basetable_AUC <- comparison_AUC %>%
-  dplyr::select(c(size, numeric_cols, nominal_cols, nr_cols, prior, SRE_better_than_LRR)) %>%
+  dplyr::select(c(size, numeric_cols, nominal_cols, proportion_nominal_cols, nr_cols, prior, SRE_better_than_LRR, cor)) %>%
   mutate(feature_ratio = nominal_cols/numeric_cols) %>%
   mutate(SRE_better_than_LRR = as.factor(SRE_better_than_LRR))
 basetable_Brier <- comparison_Brier %>%
-  dplyr::select(c(size, numeric_cols, nominal_cols, nr_cols, prior, SRE_better_than_LRR)) %>%
+  dplyr::select(c(size, numeric_cols, nominal_cols, proportion_nominal_cols, nr_cols, prior, SRE_better_than_LRR, cor)) %>%
   mutate(feature_ratio = nominal_cols/numeric_cols) %>%
   mutate(SRE_better_than_LRR = as.factor(SRE_better_than_LRR))
 basetable_PG <- comparison_PG %>%
-  dplyr::select(c(size, numeric_cols, nominal_cols, nr_cols, prior, SRE_better_than_LRR)) %>%
+  dplyr::select(c(size, numeric_cols, nominal_cols, proportion_nominal_cols, nr_cols, prior, SRE_better_than_LRR, cor)) %>%
   mutate(feature_ratio = nominal_cols/numeric_cols) %>%
   mutate(SRE_better_than_LRR = as.factor(SRE_better_than_LRR))
 
@@ -420,37 +443,18 @@ plot(AUC_tree, drop_terminal = F, type = "simple")
 plot(Brier_tree, drop_terminal = F, type = "simple")
 plot(PG_tree, drop_terminal = F, type = "simple")
 
-
-
-# Comparison with configuration of De Bock
-combined_results_AUC_DB_config$algorithm <- paste(combined_results_AUC_DB_config$algorithm, "_DB", sep = "")
-combined_results_Brier_DB_config$algorithm <- paste(combined_results_Brier_DB_config$algorithm, "_DB", sep = "")
-combined_results_PG_DB_config$algorithm <- paste(combined_results_PG_DB_config$algorithm, "_DB", sep = "")
-
-DB_basetable_AUC <- rbind(combined_results_AUC %>% dplyr::filter(algorithm=="SRE"|algorithm=="LRR"|algorithm=="RF"|algorithm=="RE"), combined_results_AUC_DB_config)
-DB_basetable_Brier <- rbind(combined_results_Brier %>% dplyr::filter(algorithm=="SRE"|algorithm=="LRR"|algorithm=="RF"|algorithm=="RE"), combined_results_Brier_DB_config)
-DB_basetable_PG <- rbind(combined_results_PG %>% dplyr::filter(algorithm=="SRE"|algorithm=="LRR"|algorithm=="RF"|algorithm=="RE"), combined_results_PG_DB_config)
-
-average_ranks_AUC <- avg_ranks(DB_basetable_AUC)
-average_ranks_Brier <- avg_ranks(DB_basetable_Brier, direction = "min")
-average_ranks_PG <- avg_ranks(DB_basetable_PG)
-
-avg_ranks_summarised_AUC <- avg_ranks_summarised(average_ranks_AUC)
-avg_ranks_summarised_Brier <- avg_ranks_summarised(average_ranks_Brier)
-avg_ranks_summarised_PG <- avg_ranks_summarised(average_ranks_PG)
-
-
-#table for attachments?
-combined_results_AUC_DB_table <- DB_basetable_AUC %>%
+#####
+#table for attachments
+combined_results_AUC_table <- combined_results_AUC %>%
   group_by(dataset, algorithm) %>%
   summarise(avg_metric = round(mean(metric), 3), sd_metric = round(sd(metric), 3)) %>%
   ungroup() %>%
   mutate_if(is.numeric, ~scales::number(., accuracy = 0.001))
 
-combined_results_AUC_DB_table$sd_brackets <- mapply(paste, "(", combined_results_AUC_DB_table$sd_metric, ")", MoreArgs = list(sep = ""))
-combined_results_AUC_DB_table$AUC <- mapply(paste, combined_results_AUC_DB_table$avg_metric, combined_results_AUC_DB_table$sd_brackets, MoreArgs = list(sep = " "))
+combined_results_AUC_table$sd_brackets <- mapply(paste, "(", combined_results_AUC_table$sd_metric, ")", MoreArgs = list(sep = ""))
+combined_results_AUC_table$AUC <- mapply(paste, combined_results_AUC_table$avg_metric, combined_results_AUC_table$sd_brackets, MoreArgs = list(sep = " "))
 
-finished_AUC_DB_table <- combined_results_AUC_DB_table %>%
+finished_AUC_table <- combined_results_AUC_table %>%
   dplyr::select(dataset, algorithm, AUC) %>%
   pivot_wider(names_from = dataset, values_from = AUC)
 
@@ -481,3 +485,122 @@ finished_PG_table <- combined_results_PG_table %>%
   pivot_wider(names_from = dataset, values_from = PG)
 
 kable(rbind(finished_AUC_table, finished_Brier_table, finished_PG_table), "latex", booktabs = T)
+
+
+
+# Comparison with configuration of De Bock
+combined_results_AUC_DB_config$algorithm <- paste(combined_results_AUC_DB_config$algorithm, "_DB", sep = "")
+combined_results_Brier_DB_config$algorithm <- paste(combined_results_Brier_DB_config$algorithm, "_DB", sep = "")
+combined_results_PG_DB_config$algorithm <- paste(combined_results_PG_DB_config$algorithm, "_DB", sep = "")
+
+DB_basetable_AUC <- rbind(combined_results_AUC %>% dplyr::filter(algorithm=="SRE"|algorithm=="RF"), combined_results_AUC_DB_config%>%filter(algorithm!="RE_DB"))
+DB_basetable_Brier <- rbind(combined_results_Brier %>% dplyr::filter(algorithm=="SRE"|algorithm=="RF"), combined_results_Brier_DB_config%>%filter(algorithm!="RE_DB"))
+DB_basetable_PG <- rbind(combined_results_PG %>% dplyr::filter(algorithm=="SRE"|algorithm=="RF"), combined_results_PG_DB_config%>%filter(algorithm!="RE_DB"))
+
+average_ranks_AUC <- avg_ranks(DB_basetable_AUC)
+average_ranks_Brier <- avg_ranks(DB_basetable_Brier, direction = "min")
+average_ranks_PG <- avg_ranks(DB_basetable_PG)
+
+avg_ranks_summarised_AUC <- avg_ranks_summarised(average_ranks_AUC)
+avg_ranks_summarised_Brier <- avg_ranks_summarised(average_ranks_Brier)
+avg_ranks_summarised_PG <- avg_ranks_summarised(average_ranks_PG)
+
+
+#bayesian comparison
+DB_basetable_AUC$group <- paste(DB_basetable_AUC$dataset, DB_basetable_AUC$nr_fold)
+AUC_prep_rank <- DB_basetable_AUC %>% dplyr::select(group, algorithm, metric) %>% pivot_wider(names_from = algorithm, values_from = metric) %>% rename("id" = group)
+names(AUC_prep_rank) <- c("id", "RF", "SRE", "RF_AP", "SRE_AP")
+AUC_bayes <- perf_mod(AUC_prep_rank,
+                      iter = 40000,
+                      seed = 42,
+                      chains = 4)
+
+#all
+AUC_contrasts <- contrast_models(AUC_bayes)
+autoplot(AUC_contrasts, size = 0.01)
+latex_summary_AUC_DB <-summary(AUC_contrasts, size = 0.01) %>% 
+        dplyr::select(contrast, starts_with("pract"))
+
+
+
+
+
+DB_basetable_Brier$group <- paste(DB_basetable_Brier$dataset, DB_basetable_Brier$nr_fold)
+Brier_prep_rank <- DB_basetable_Brier %>% dplyr::select(group, algorithm, metric) %>% pivot_wider(names_from = algorithm, values_from = metric) %>% rename("id" = group)
+#Scale between 0.5 and 1
+max_Brier <- Brier_prep_rank %>% dplyr::select(where(is.numeric)) %>% apply(1,max)
+Brier_scaled <- cbind(Brier_prep_rank[1],
+                      0.5 + 0.5*(Brier_prep_rank[-1]/max_Brier))
+names(Brier_scaled) <- c("id", "RF", "SRE", "RF_AP", "SRE_AP")
+Brier_bayes <- perf_mod(Brier_scaled, #NORMALISEREN
+                        iter = 40000,
+                        seed = 42)
+
+#all
+Brier_contrasts <- contrast_models(Brier_bayes)
+autoplot(Brier_contrasts, size = 0.01)
+latex_summary_Brier_DB <- summary(Brier_contrasts, size = 0.01) %>% 
+        dplyr::select(contrast, starts_with("pract"))
+
+
+DB_basetable_PG$group <- paste(DB_basetable_PG$dataset, DB_basetable_PG$nr_fold)
+PG_prep_rank <- DB_basetable_PG %>% dplyr::select(group, algorithm, metric) %>% pivot_wider(names_from = algorithm, values_from = metric) %>% rename("id" = group)
+#Scale between 0.5 and 1
+max_PG <- PG_prep_rank %>% dplyr::select(where(is.numeric)) %>% apply(1,max)
+PG_scaled <- cbind(PG_prep_rank[1],
+                   0.5 + 0.5*(PG_prep_rank[-1]/max_PG))
+names(PG_scaled) <- c("id", "RF", "SRE", "RF_AP", "SRE_AP")
+PG_bayes <- perf_mod(PG_scaled,
+                     iter = 40000,
+                     seed = 42)
+
+#all
+PG_contrasts <- contrast_models(PG_bayes)
+autoplot(PG_contrasts, size = 0.01)
+latex_summary_PG_DB <- summary(PG_contrasts, size = 0.01) %>% 
+        dplyr::select(contrast, starts_with("pract"))
+
+kable(rbind(latex_summary_AUC_DB, latex_summary_Brier_DB, latex_summary_PG_DB), "latex", booktabs = T)
+
+#####
+#table for attachments?
+combined_results_AUC_DB_table <- DB_basetable_AUC %>%
+  group_by(dataset, algorithm) %>%
+  summarise(avg_metric = round(mean(metric), 3), sd_metric = round(sd(metric), 3)) %>%
+  ungroup() %>%
+  mutate_if(is.numeric, ~scales::number(., accuracy = 0.001))
+
+combined_results_AUC_DB_table$sd_brackets <- mapply(paste, "(", combined_results_AUC_DB_table$sd_metric, ")", MoreArgs = list(sep = ""))
+combined_results_AUC_DB_table$AUC <- mapply(paste, combined_results_AUC_DB_table$avg_metric, combined_results_AUC_DB_table$sd_brackets, MoreArgs = list(sep = " "))
+
+finished_AUC_DB_table <- combined_results_AUC_DB_table %>%
+  dplyr::select(dataset, algorithm, AUC) %>%
+  pivot_wider(names_from = dataset, values_from = AUC)
+
+combined_results_Brier_DB_table <- DB_basetable_Brier %>%
+  group_by(dataset, algorithm) %>%
+  summarise(avg_metric = round(mean(metric), 3), sd_metric = round(sd(metric), 3)) %>%
+  ungroup() %>%
+  mutate_if(is.numeric, ~scales::number(., accuracy = 0.001))
+
+combined_results_Brier_DB_table$sd_brackets <- mapply(paste, "(", combined_results_Brier_DB_table$sd_metric, ")", MoreArgs = list(sep = ""))
+combined_results_Brier_DB_table$Brier <- mapply(paste, combined_results_Brier_DB_table$avg_metric, combined_results_Brier_DB_table$sd_brackets, MoreArgs = list(sep = " "))
+
+finished_Brier_DB_table <- combined_results_Brier_DB_table %>%
+  dplyr::select(dataset, algorithm, Brier) %>%
+  pivot_wider(names_from = dataset, values_from = Brier)
+
+combined_results_PG_DB_table <- DB_basetable_PG %>%
+  group_by(dataset, algorithm) %>%
+  summarise(avg_metric = round(mean(metric), 3), sd_metric = round(sd(metric), 3)) %>%
+  ungroup() %>%
+  mutate_if(is.numeric, ~scales::number(., accuracy = 0.001))
+
+combined_results_PG_DB_table$sd_brackets <- mapply(paste, "(", combined_results_PG_DB_table$sd_metric, ")", MoreArgs = list(sep = ""))
+combined_results_PG_DB_table$PG <- mapply(paste, combined_results_PG_DB_table$avg_metric, combined_results_PG_DB_table$sd_brackets, MoreArgs = list(sep = " "))
+
+finished_PG_DB_table <- combined_results_PG_DB_table %>%
+  dplyr::select(dataset, algorithm, PG) %>%
+  pivot_wider(names_from = dataset, values_from = PG)
+
+kable(rbind(finished_AUC_DB_table, finished_Brier_DB_table, finished_PG_DB_table), "latex", booktabs = T)

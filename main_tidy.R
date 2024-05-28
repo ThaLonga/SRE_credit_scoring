@@ -510,7 +510,7 @@ for(dataset in datasets) {
     
     set.seed(innerseed)
     RE_model <- train(XGB_recipe, data = train, method = "pre",
-                      ntrees = min(500, round(nrow(train)/2)), family = "binomial", trControl = ctrl,
+                      ntrees = min(100, round(nrow(train)/2)), family = "binomial", trControl = ctrl,
                       tuneGrid = preGrid, ad.alpha = 0, singleconditions = TRUE,
                       winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
                       verbose = TRUE,
