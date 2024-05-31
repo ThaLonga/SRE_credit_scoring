@@ -17,10 +17,12 @@ combined_results_AUC_DB_config <- bind_rows(loaded_results_DB$GC_AUC_DB_config, 
 combined_results_Brier_DB_config <- bind_rows(loaded_results_DB$GC_BRIER_DB_config, loaded_results_DB$AC_BRIER_DB_config, loaded_results_DB$HMEQ_BRIER_DB_config, loaded_results_DB$TH02_BRIER_DB_config, loaded_results_DB$LC_BRIER_DB_config, loaded_results_DB$TC_BRIER_DB_config, loaded_results_DB$GMSC_BRIER_DB_config, loaded_results_PLTR$GC_BRIER_DB_config_PLTR, loaded_results_PLTR$AC_BRIER_DB_config_PLTR, loaded_results_PLTR$HMEQ_BRIER_DB_config, loaded_results_PLTR$TH02_BRIER_DB_config, loaded_results_PLTR$LC_BRIER_DB_config, loaded_results_PLTR$TC_BRIER_DB_config, loaded_results_PLTR$GMSC_BRIER_DB_config) %>% dplyr::select(-...1)
 combined_results_PG_DB_config <- bind_rows(loaded_results_DB$GC_PG_DB_config, loaded_results_DB$AC_PG_DB_config, loaded_results_DB$HMEQ_PG_DB_config, loaded_results_DB$TH02_PG_DB_config, loaded_results_DB$LC_PG_DB_config, loaded_results_DB$TC_PG_DB_config, loaded_results_DB$GMSC_PG_DB_config, loaded_results_PLTR$GC_PG_DB_config_PLTR, loaded_results_PLTR$AC_PG_DB_config_PLTR, loaded_results_PLTR$HMEQ_PG_DB_config, loaded_results_PLTR$TH02_PG_DB_config, loaded_results_PLTR$LC_PG_DB_config, loaded_results_PLTR$TC_PG_DB_config, loaded_results_PLTR$GMSC_PG_DB_config) %>% dplyr::select(-...1)
 
+
 #For no duplicate code
 #combined_results_AUC <- combined_results_AUC_DB_config
 #combined_results_Brier <- combined_results_Brier_DB_config
 #combined_results_PG <- combined_results_PG_DB_config
+
 # tables for attachments:
 #####
 combined_results_AUC_table <- combined_results_AUC %>%
@@ -72,17 +74,17 @@ average_ranks_AUC <- avg_ranks(combined_results_AUC)
 average_ranks_Brier <- avg_ranks(combined_results_Brier, direction = "min")
 average_ranks_PG <- avg_ranks(combined_results_PG)
 
-avg_ranks_summarised_AUC <- avg_ranks_summarised(average_ranks_AUC)
-avg_ranks_summarised_Brier <- avg_ranks_summarised(average_ranks_Brier)
-avg_ranks_summarised_PG <- avg_ranks_summarised(average_ranks_PG)
+avg_ranks_summarized_AUC <- avg_ranks_summarized(average_ranks_AUC)
+avg_ranks_summarized_Brier <- avg_ranks_summarized(average_ranks_Brier)
+avg_ranks_summarized_PG <- avg_ranks_summarized(average_ranks_PG)
 
-avg_ranks_summarised_AUC_latex<- xtable(avg_ranks_summarised_AUC)
-avg_ranks_summarised_Brier_latex<- xtable(avg_ranks_summarised_Brier)
-avg_ranks_summarised_PG_latex<- xtable(avg_ranks_summarised_PG)
+avg_ranks_summarized_AUC_latex<- xtable(avg_ranks_summarized_AUC)
+avg_ranks_summarized_Brier_latex<- xtable(avg_ranks_summarized_Brier)
+avg_ranks_summarized_PG_latex<- xtable(avg_ranks_summarized_PG)
 
-#kable(avg_ranks_summarised_AUC, "latex", booktabs = T)
+#kable(avg_ranks_summarized_AUC, "latex", booktabs = T)
 
-View(avg_ranks_summarised_AUC)
+View(avg_ranks_summarized_AUC)
 View(average_ranks_AUC)
 
 # Friedman test
@@ -93,34 +95,34 @@ friedman_PG <- average_ranks_PG %>% convert_as_factor(dataset, algorithm) %>% fr
 
 #AUC pairwise friedman
 AUC_pairwise_p_values <- c()
-for(i in 1:nrow(avg_ranks_summarised_AUC)) {
-  R_j <- min(avg_ranks_summarised_AUC$average_rank)
-  z <- friedman_pairwise(R_j, avg_ranks_summarised_AUC$average_rank[i], nrow(avg_ranks_summarised_AUC), nr_datasets)
+for(i in 1:nrow(avg_ranks_summarized_AUC)) {
+  R_j <- min(avg_ranks_summarized_AUC$average_rank)
+  z <- friedman_pairwise(R_j, avg_ranks_summarized_AUC$average_rank[i], nrow(avg_ranks_summarized_AUC), nr_datasets)
   AUC_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
 }
 AUC_pairwise_p_values_adjusted <- adjustRom(AUC_pairwise_p_values, alpha=0.05)
 
 #Brier pairwise friedman
 Brier_pairwise_p_values <- c()
-for(i in 1:nrow(avg_ranks_summarised_Brier)) {
-  R_j <- min(avg_ranks_summarised_Brier$average_rank)
-  z <- friedman_pairwise(R_j, avg_ranks_summarised_Brier$average_rank[i], nrow(avg_ranks_summarised_Brier), nr_datasets)
+for(i in 1:nrow(avg_ranks_summarized_Brier)) {
+  R_j <- min(avg_ranks_summarized_Brier$average_rank)
+  z <- friedman_pairwise(R_j, avg_ranks_summarized_Brier$average_rank[i], nrow(avg_ranks_summarized_Brier), nr_datasets)
   Brier_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
 }
 Brier_pairwise_p_values_adjusted <- adjustRom(Brier_pairwise_p_values, alpha=0.05)
 
 #PG pairwise friedman
 PG_pairwise_p_values <- c()
-for(i in 1:nrow(avg_ranks_summarised_PG)) {
-  R_j <- min(avg_ranks_summarised_PG$average_rank)
-  z <- friedman_pairwise(R_j, avg_ranks_summarised_PG$average_rank[i], nrow(avg_ranks_summarised_PG), nr_datasets)
+for(i in 1:nrow(avg_ranks_summarized_PG)) {
+  R_j <- min(avg_ranks_summarized_PG$average_rank)
+  z <- friedman_pairwise(R_j, avg_ranks_summarized_PG$average_rank[i], nrow(avg_ranks_summarized_PG), nr_datasets)
   PG_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
 }
 PG_pairwise_p_values_adjusted <- adjustRom(PG_pairwise_p_values, alpha=0.05)
 
 #join to make table
-all_avg_ranks <- cbind(avg_ranks_summarised_AUC$algorithm, round(avg_ranks_summarised_AUC$average_rank, 2), round(avg_ranks_summarised_Brier$average_rank, 2), round(avg_ranks_summarised_PG$average_rank, 2)) %>% as_tibble()
-pairwise_p_values <- cbind(avg_ranks_summarised_AUC$algorithm, round(AUC_pairwise_p_values_adjusted, 3), round(Brier_pairwise_p_values_adjusted, 3), round(PG_pairwise_p_values_adjusted, 3)) %>% as_tibble()
+all_avg_ranks <- cbind(avg_ranks_summarized_AUC$algorithm, round(avg_ranks_summarized_AUC$average_rank, 2), round(avg_ranks_summarized_Brier$average_rank, 2), round(avg_ranks_summarized_PG$average_rank, 2)) %>% as_tibble()
+pairwise_p_values <- cbind(avg_ranks_summarized_AUC$algorithm, round(AUC_pairwise_p_values_adjusted, 3), round(Brier_pairwise_p_values_adjusted, 3), round(PG_pairwise_p_values_adjusted, 3)) %>% as_tibble()
 pairwise_p_values_brackets <- as.data.frame(mapply(paste, "(", pairwise_p_values, ")", MoreArgs = list(sep = "")))
 pairwise_p_values_brackets[1]<-NA
 
@@ -489,21 +491,64 @@ kable(rbind(finished_AUC_table, finished_Brier_table, finished_PG_table), "latex
 
 
 # Comparison with configuration of De Bock
-combined_results_AUC_DB_config$algorithm <- paste(combined_results_AUC_DB_config$algorithm, "_DB", sep = "")
-combined_results_Brier_DB_config$algorithm <- paste(combined_results_Brier_DB_config$algorithm, "_DB", sep = "")
-combined_results_PG_DB_config$algorithm <- paste(combined_results_PG_DB_config$algorithm, "_DB", sep = "")
+combined_results_AUC_DB_config$algorithm <- paste(combined_results_AUC_DB_config$algorithm, "_AP", sep = "")
+combined_results_Brier_DB_config$algorithm <- paste(combined_results_Brier_DB_config$algorithm, "_AP", sep = "")
+combined_results_PG_DB_config$algorithm <- paste(combined_results_PG_DB_config$algorithm, "_AP", sep = "")
 
-DB_basetable_AUC <- rbind(combined_results_AUC %>% dplyr::filter(algorithm=="SRE"|algorithm=="RF"), combined_results_AUC_DB_config%>%filter(algorithm!="RE_DB"))
-DB_basetable_Brier <- rbind(combined_results_Brier %>% dplyr::filter(algorithm=="SRE"|algorithm=="RF"), combined_results_Brier_DB_config%>%filter(algorithm!="RE_DB"))
-DB_basetable_PG <- rbind(combined_results_PG %>% dplyr::filter(algorithm=="SRE"|algorithm=="RF"), combined_results_PG_DB_config%>%filter(algorithm!="RE_DB"))
+DB_basetable_AUC <- rbind(combined_results_AUC %>% dplyr::filter(algorithm=="SRE"|algorithm=="RF"), combined_results_AUC_DB_config%>%filter(algorithm!="RE_AP"))
+DB_basetable_Brier <- rbind(combined_results_Brier %>% dplyr::filter(algorithm=="SRE"|algorithm=="RF"), combined_results_Brier_DB_config%>%filter(algorithm!="RE_AP"))
+DB_basetable_PG <- rbind(combined_results_PG %>% dplyr::filter(algorithm=="SRE"|algorithm=="RF"), combined_results_PG_DB_config%>%filter(algorithm!="RE_AP"))
 
+#for latex table 
+DB_basetable_AUC_summarized <- DB_basetable_AUC %>%
+  group_by(algorithm) %>%
+  summarise("Avg" = round(mean(metric), 3), "stdev" = round(sd(metric),3)) %>%
+  ungroup() %>%
+  mutate_if(is.numeric, ~scales::number(., accuracy = 0.001))
+
+DB_basetable_AUC_summarized$sd_brackets <- mapply(paste, "(", DB_basetable_AUC_summarized$stdev, ")", MoreArgs = list(sep = ""))
+DB_basetable_AUC_summarized$AUC <- mapply(paste, DB_basetable_AUC_summarized$Avg, DB_basetable_AUC_summarized$sd_brackets, MoreArgs = list(sep = " "))
+
+finished_AUC_DB_table_summarized <- DB_basetable_AUC_summarized %>%
+  dplyr::select(algorithm, AUC) %>%
+  pivot_wider(names_from = algorithm, values_from = AUC)
+
+DB_basetable_Brier_summarized <- DB_basetable_Brier %>%
+  group_by(algorithm) %>%
+  summarise("Avg" = round(mean(metric), 3), "stdev" = round(sd(metric),3)) %>%
+  ungroup() %>%
+  mutate_if(is.numeric, ~scales::number(., accuracy = 0.001))
+
+DB_basetable_Brier_summarized$sd_brackets <- mapply(paste, "(", DB_basetable_Brier_summarized$stdev, ")", MoreArgs = list(sep = ""))
+DB_basetable_Brier_summarized$Brier <- mapply(paste, DB_basetable_Brier_summarized$Avg, DB_basetable_Brier_summarized$sd_brackets, MoreArgs = list(sep = " "))
+
+finished_Brier_DB_table_summarized <- DB_basetable_Brier_summarized %>%
+  dplyr::select(algorithm, Brier) %>%
+  pivot_wider(names_from = algorithm, values_from = Brier)
+
+DB_basetable_PG_summarized <- DB_basetable_PG %>%
+  group_by(algorithm) %>%
+  summarise("Avg" = round(mean(metric), 3), "stdev" = round(sd(metric),3)) %>%
+  ungroup() %>%
+  mutate_if(is.numeric, ~scales::number(., accuracy = 0.001))
+
+DB_basetable_PG_summarized$sd_brackets <- mapply(paste, "(", DB_basetable_PG_summarized$stdev, ")", MoreArgs = list(sep = ""))
+DB_basetable_PG_summarized$PG <- mapply(paste, DB_basetable_PG_summarized$Avg, DB_basetable_PG_summarized$sd_brackets, MoreArgs = list(sep = " "))
+
+finished_PG_DB_table_summarized <- DB_basetable_PG_summarized %>%
+  dplyr::select(algorithm, PG) %>%
+  pivot_wider(names_from = algorithm, values_from = PG)
+
+
+kable(rbind(finished_AUC_DB_table_summarized, finished_Brier_DB_table_summarized, finished_PG_DB_table_summarized), "latex", booktabs=T)
+#####
 average_ranks_AUC <- avg_ranks(DB_basetable_AUC)
 average_ranks_Brier <- avg_ranks(DB_basetable_Brier, direction = "min")
 average_ranks_PG <- avg_ranks(DB_basetable_PG)
 
-avg_ranks_summarised_AUC <- avg_ranks_summarised(average_ranks_AUC)
-avg_ranks_summarised_Brier <- avg_ranks_summarised(average_ranks_Brier)
-avg_ranks_summarised_PG <- avg_ranks_summarised(average_ranks_PG)
+avg_ranks_summarized_AUC <- avg_ranks_summarized(average_ranks_AUC)
+avg_ranks_summarized_Brier <- avg_ranks_summarized(average_ranks_Brier)
+avg_ranks_summarized_PG <- avg_ranks_summarized(average_ranks_PG)
 
 
 #bayesian comparison
