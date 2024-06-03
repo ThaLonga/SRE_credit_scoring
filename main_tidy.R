@@ -1,14 +1,12 @@
 # main
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
 p_load(glmnet, glmnetUtils, mgcv, MASS, tidyverse, xgboost, DiagrammeR, stringr, tictoc, doParallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai, rlang, yardstick, bonsai, lightgbm, ranger, tune, DescTools, rules, discrim)
+
 #conventions:
 # target variable = label
 # indepentent variables = all others
 
-#levels should be X1 and X2
-#evaluation function for caret tuning from pre package
-source("./src/models.R")
-#source("./src/partialGini_yardstick.R")
+source("./src/misc.R")
 source("./src/hyperparameters.R")
 source("./src/BigSummary.R")
 source("./src/data_loader.R")

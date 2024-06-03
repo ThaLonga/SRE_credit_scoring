@@ -6,3 +6,10 @@
 /data/*
 .RDataTmp1
 .RDataTmp
+/casestudy
+/figures
+SRE_SGL_main.R
+literaturetable.csv
+hyperparameters.csv
+hyperparameters.xlsx
+figure_Trees.pptx
