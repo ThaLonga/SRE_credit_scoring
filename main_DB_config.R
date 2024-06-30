@@ -7,7 +7,7 @@ p_load(glmnet, glmnetUtils, mgcv, MASS, tidyverse, xgboost, DiagrammeR, stringr,
 
 #levels should be X1 and X2
 #evaluation function for caret tuning from pre package
-source("./src/models.R")
+source("./src/misc.R")
 #source("./src/partialGini_yardstick.R")
 source("./src/hyperparameters.R")
 source("./src/BigSummary.R")
