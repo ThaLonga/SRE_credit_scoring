@@ -291,7 +291,7 @@ for(dataset in datasets) {
     #Brier
     
     CTREE_model_Brier <- train(TREE_recipe, data = train, method = "ctree",
-                               tuneGrid = expand.grid(mincriterion = (CTREE_model$results%>%slice_max(Brier)%>%dplyr::select(mincriterion))[[1]])) 
+                               tuneGrid = expand.grid(mincriterion = (CTREE_model$results%>%slice_min(Brier)%>%dplyr::select(mincriterion))[[1]])) 
     CTREE_preds <- predict(CTREE_model_Brier, test, type = 'prob')
     CTREE_preds$label <- test$label
     
@@ -497,19 +497,78 @@ for(dataset in datasets) {
     #####
     # RE
     #####
-    print("RE")
-
-    RE_recipe <- train %>% recipe(label~.) %>% 
-      step_impute_mean(all_numeric_predictors()) %>%
-      step_impute_mode(all_string_predictors()) %>%
-      step_impute_mode(all_factor_predictors()) %>%
-      step_novel(all_nominal_predictors()) %>%
-      step_zv(all_predictors())
+#    print("RE")
+#
+#    set.seed(innerseed)
+#    RE_model <- train(XGB_recipe, data = train, method = "pre",
+#                      ntrees = min(100, round(nrow(train)/2)), family = "binomial", trControl = ctrl,
+#                      tuneGrid = preGrid, ad.alpha = 0, singleconditions = TRUE,
+#                      winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
+#                      verbose = TRUE,
+#                      metric = "AUCROC", allowParallel = TRUE,
+#                      par.init=TRUE,
+#                      par.final=TRUE)    
+#    
+#    #AUC
+#    RE_preds <- predict(RE_model, test, type = 'probs')
+#    RE_preds$label <- test$label
+#    
+#    g <- roc(label ~ X1, data = RE_preds, direction = "<")
+#    AUC <- g$auc
+#    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", AUC)
+#    
+#    #Brier
+#    RE_model_Brier <- train(XGB_recipe, data = train, method = "pre",
+#                            ntrees = min(100, round(nrow(train)/2)), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+#                            tuneGrid = getModelInfo("pre")[[1]]$grid( 
+#                              maxdepth = (RE_model$results%>%slice_min(Brier)%>%dplyr::select(maxdepth))[[1]],
+#                              learnrate = (RE_model$results%>%slice_min(Brier)%>%dplyr::select(learnrate))[[1]],
+#                              penalty.par.val = c("lambda.1se"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
+#                              sampfrac = 1,
+#                              use.grad = TRUE), ad.alpha = 0, singleconditions = TRUE,
+#                            winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
+#                            verbose = TRUE,
+#                            allowParallel = TRUE,
+#                            par.init=TRUE,
+#                            par.final=TRUE)
+#    RE_preds <- predict(RE_model_Brier, test, type = 'prob')
+#    RE_preds$label <- test$label
+#    brier <- brier_score(truth = RE_preds$label, preds = RE_preds$X1)
+#    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", brier)
+#    
+#    #PG
+#    RE_model_PG <- train(XGB_recipe, data = train, method = "pre",
+#                            ntrees = min(100, round(nrow(train)/2)), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+#                            tuneGrid = getModelInfo("pre")[[1]]$grid( 
+#                              maxdepth = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(maxdepth))[[1]],
+#                              learnrate = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(learnrate))[[1]],
+#                              penalty.par.val = c("lambda.1se"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
+#                              sampfrac = 1,
+#                              use.grad = TRUE), ad.alpha = 0, singleconditions = TRUE,
+#                            winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
+#                            verbose = TRUE,
+#                            metric = "AUCROC", allowParallel = TRUE,
+#                            par.init=TRUE,
+#                            par.final=TRUE)
+#    RE_preds <- predict(RE_model_PG, test, type = 'prob')
+#    RE_preds$label <- test$label
+#    
+#    pg <- partialGini(RE_preds$X1, RE_preds$label)
+#    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", pg)
+#    
+#    
+#    
+    #####
+    # RE RF rules
+    #####
+    
+    # same as above but with RF instead of boosting
+    print("RE_RF")
     
     set.seed(innerseed)
     RE_model <- train(XGB_recipe, data = train, method = "pre",
-                      ntrees = min(100, round(nrow(train)/2)), family = "binomial", trControl = ctrl,
-                      tuneGrid = preGrid, ad.alpha = 0, singleconditions = TRUE,
+                      ntrees = 200, family = "binomial", trControl = ctrl,
+                      tuneGrid = preGrid_RF, ad.alpha = 0, singleconditions = FALSE,
                       winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
                       verbose = TRUE,
                       metric = "AUCROC", allowParallel = TRUE,
@@ -526,13 +585,14 @@ for(dataset in datasets) {
     
     #Brier
     RE_model_Brier <- train(XGB_recipe, data = train, method = "pre",
-                            ntrees = min(100, round(nrow(train)/2)), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+                            ntrees = min(200, round(nrow(train)/2)), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
                             tuneGrid = getModelInfo("pre")[[1]]$grid( 
-                              maxdepth = (RE_model$results%>%slice_max(Brier)%>%dplyr::select(maxdepth))[[1]],
-                              learnrate = (RE_model$results%>%slice_max(Brier)%>%dplyr::select(learnrate))[[1]],
-                              penalty.par.val = c("lambda.1se"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
+                              maxdepth = (RE_model$results%>%slice_min(Brier)%>%dplyr::select(maxdepth))[[1]],
+                              penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
                               sampfrac = 1,
-                              use.grad = TRUE), ad.alpha = 0, singleconditions = TRUE,
+                              mtry = (RE_model$results%>%slice_min(Brier)%>%dplyr::select(mtry))[[1]],
+                              use.grad = FALSE),
+                            ad.alpha = 0, singleconditions = FALSE,
                             winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
                             verbose = TRUE,
                             allowParallel = TRUE,
@@ -545,23 +605,24 @@ for(dataset in datasets) {
     
     #PG
     RE_model_PG <- train(XGB_recipe, data = train, method = "pre",
-                            ntrees = min(100, round(nrow(train)/2)), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
-                            tuneGrid = getModelInfo("pre")[[1]]$grid( 
-                              maxdepth = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(maxdepth))[[1]],
-                              learnrate = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(learnrate))[[1]],
-                              penalty.par.val = c("lambda.1se"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
-                              sampfrac = 1,
-                              use.grad = TRUE), ad.alpha = 0, singleconditions = TRUE,
-                            winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
-                            verbose = TRUE,
-                            metric = "AUCROC", allowParallel = TRUE,
-                            par.init=TRUE,
-                            par.final=TRUE)
+                         ntrees = min(200, round(nrow(train)/2)), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+                         tuneGrid = getModelInfo("pre")[[1]]$grid( 
+                           maxdepth = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(maxdepth))[[1]],
+                           penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
+                           sampfrac = 1,
+                           mtry = (RE_model$results%>%slice_max(partialGini)%>%dplyr::select(mtry))[[1]],
+                           use.grad = TRUE), ad.alpha = 0, singleconditions = FALSE,
+                         winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
+                         verbose = TRUE,
+                         metric = "AUCROC", allowParallel = TRUE,
+                         par.init=TRUE,
+                         par.final=TRUE)
     RE_preds <- predict(RE_model_PG, test, type = 'prob')
     RE_preds$label <- test$label
     
     pg <- partialGini(RE_preds$X1, RE_preds$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE", pg)
+    
     
     
     ####### 

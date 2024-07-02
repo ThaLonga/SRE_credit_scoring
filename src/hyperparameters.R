@@ -49,6 +49,14 @@ preGrid <- getModelInfo("pre")[[1]]$grid(
   mtry = round(sqrt(ncol(train_bake_x)*c(0.1,0.25,0.5,1,2,4)))
 )
 
+preGrid_RF <- getModelInfo("pre")[[1]]$grid( 
+  maxdepth = c(3),
+  penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
+  sampfrac = 1,
+  use.grad = FALSE,
+  mtry = round(sqrt(ncol(train_bake_x)*c(0.1,0.25,0.5,1,2,4)))
+)
+
 
 #####
 #parameters from De Bock
