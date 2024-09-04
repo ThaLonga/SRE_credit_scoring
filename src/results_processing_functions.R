@@ -38,7 +38,7 @@ avg_ranks_bayes <- function(.data, direction = "max") {
   else warning("no valid direction")
 }
 
-avg_ranks_summarised <- function(.data) {
+avg_ranks_summarized <- function(.data) {
   .data %>%
     group_by(algorithm) %>%
     summarise(average_rank = mean(average_rank))

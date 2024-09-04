@@ -101,7 +101,7 @@ LC <- LC %>%
 
 save(LC, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/LC.Rda")
 
-#JC
+#TC
 TC <- read_excel("data/default+of+credit+card+clients/default of credit card clients.xls", trim_ws = TRUE, range=cell_rows(2:30002), col_names = TRUE)
 #33% sample
 TC <- TC[sample(nrow(TC), round(1/3*nrow(TC))), ]
@@ -113,3 +113,25 @@ TC <- TC %>%
                         labels = make.names(levels(label))))
 
 save(TC, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/TC.Rda")
+
+#PAKDD
+PAKDD <- read_delim("data/PAKDD 2010/PAKDD.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
+PAKDD <- PAKDD %>% select(-Column2, -Column11, -Column12, -Column14, -Column15, -Column16, -Column18, -Column35, -Column36, -Column37, -Column39, -Column52, -Column53)
+PAKDD[PAKDD=="NULL"]<-NA
+PAKDD$Column4[PAKDD$Column4=="0"]<-NA
+PAKDD$Column7[PAKDD$Column7=="N"]<-NA
+
+PAKDD <- PAKDD %>%
+  mutate_at(vars(Column3, Column6, Column7, Column8, Column13, Column17, Column19, Column20, Column21, Column25, Column26, Column27, Column28, Column29, Column34, Column38, Column41, Column42, Column43, Column44, Column45, Column46, Column47, Column48, Column49, Column50, Column54), as.factor) %>%
+  rename("label" = "Column54") %>%
+  mutate(label = factor(label, 
+                        labels = make.names(levels(label))))
+
+#add flags for missing values
+columns_to_flag <- colnames(PAKDD)[unlist(lapply(PAKDD, function(x) sum(is.na(x))))>0]
+for (col in columns_to_flag) {
+  flag_col_name <- paste0(col, "_FLAG")
+  PAKDD[[flag_col_name]] <- as.factor(ifelse(is.na(PAKDD[[col]]), 1, 0))
+}
+
+save(PAKDD, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/PAKDD.Rda")

@@ -97,27 +97,27 @@ select_best_pg_SRE <- function(.data) {
 select_best_pg_XGB <- function(.data) {
   suppressMessages({.data %>%
       collect_predictions(summarize = TRUE) %>%
-      group_by(trees, tree_depth, learn_rate, mtry, sample_size, .config) %>%
+      group_by(trees, tree_depth, learn_rate, sample_size, loss_reduction, .config) %>%
       summarise(partial_gini = partialGini(.pred_X1, label)) %>%
-      group_by(trees, tree_depth, learn_rate, mtry, sample_size, .config) %>%
+      group_by(trees, tree_depth, learn_rate, sample_size, loss_reduction, .config) %>%
       summarise(avg_pg = mean(partial_gini)) %>%
       ungroup() %>%
       slice_max(avg_pg) %>%
       slice_head() %>%
-      dplyr::select(trees, tree_depth, learn_rate, mtry, sample_size, .config)})
+      dplyr::select(trees, tree_depth, learn_rate, sample_size, loss_reduction, .config)})
 }
 
 select_best_pg_LGBM <- function(.data) {
   suppressMessages({.data %>%
       collect_predictions(summarize = TRUE) %>%
-      group_by(trees, tree_depth, learn_rate, mtry, .config) %>%
+      group_by(trees, tree_depth, learn_rate, sample_size, loss_reduction, .config) %>%
       summarise(partial_gini = partialGini(.pred_X1, label)) %>%
-      group_by(trees, tree_depth, learn_rate, mtry, .config) %>%
+      group_by(trees, tree_depth, learn_rate, sample_size, loss_reduction, .config) %>%
       summarise(avg_pg = mean(partial_gini)) %>%
       ungroup() %>%
       slice_max(avg_pg) %>%
       slice_head() %>%
-      dplyr::select(trees, tree_depth, learn_rate, mtry, .config)})
+      dplyr::select(trees, tree_depth, learn_rate, sample_size, loss_reduction, .config)})
 }
 
 select_best_pg_RF <- function(.data) {
