@@ -341,12 +341,12 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
     
     full_metrics_PG_ridge <- rbind(full_metrics_PG_ridge, metrics_SRE_ridge_PG)
     
-    best_ridge_auc <- SRE_ridge_tuned_AUC %>% select_best("roc_auc")
+    best_ridge_auc <- SRE_ridge_tuned_AUC %>% select_best(metric="roc_auc")
     final_ridge_wf_auc <- SRE_ridge_wf_AUC %>% finalize_workflow(best_ridge_auc)
     final_ridge_fit_auc <- final_ridge_wf_auc %>% last_fit(SRE_split_AUC$splits[[k]], metrics = metrics)
     ridge_penalties_AUC <- coef((final_ridge_fit_auc%>%extract_fit_engine()), s=best_ridge_auc$penalty)
     
-    best_ridge_Brier <- SRE_ridge_tuned_Brier %>% select_best("brier_class")
+    best_ridge_Brier <- SRE_ridge_tuned_Brier %>% select_best(metric="brier_class")
     final_ridge_wf_Brier <- SRE_ridge_wf_Brier %>% finalize_workflow(best_ridge_Brier)
     final_ridge_fit_Brier <- final_ridge_wf_Brier %>% last_fit(SRE_split_Brier$splits[[k]], metrics = metrics)
     ridge_penalties_Brier <- coef((final_ridge_fit_Brier%>%extract_fit_engine()), s=best_ridge_Brier$penalty)

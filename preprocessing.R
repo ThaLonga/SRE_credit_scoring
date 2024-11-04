@@ -8,7 +8,7 @@ source('./src/preprocessing_functions.R')
 
 
 #German
-german <- read_table("data/statlog+german+credit+data/german.csv", col_names = FALSE)
+german <- read_table("data/statlog+german+credit+data/german.data", col_names = FALSE)
 
 ## change 1,2 to 0,1
 german$X21 <- as.factor(ifelse(german$X21==1, 0, 1))
@@ -16,7 +16,7 @@ german <- german  %>% rename("label" = X21) %>%
   mutate(label = factor(label, 
                         labels = make.names(levels(label))))
 
-save(german, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/german.Rda")
+save(german, file = "data/GOLD/german.Rda")
 
 
 #Australian
@@ -28,7 +28,7 @@ australian <- australian %>%
   mutate(label = factor(label, 
                         labels = make.names(levels(label))))
 
-save(australian, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/australian.Rda")
+save(australian, file = "data/GOLD/australian.Rda")
 
 #HMEQ
 HMEQ <- read_csv("data/HMEQ/hmeq.csv")
@@ -48,7 +48,7 @@ for (col in columns_to_flag) {
   HMEQ[[flag_col_name]] <- as.factor(ifelse(is.na(HMEQ[[col]]), 1, 0))
 }
 
-save(HMEQ, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/hmeq.Rda")
+save(HMEQ, file = "data/GOLD/hmeq.Rda")
 
 
 
@@ -72,11 +72,11 @@ kaggle <- kaggle %>%
 kaggle$MonthlyIncome_flag <- as.factor(ifelse(((kaggle$MonthlyIncome == 0)|is.na(kaggle$MonthlyIncome)), 1, 0))
 kaggle$NumberOfDependents_flag <- as.factor(ifelse(is.na(kaggle$NumberOfDependents), 1, 0))
 
-save(kaggle, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/kaggle.Rda")
+save(kaggle, file = "data/GOLD/kaggle.Rda")
 
 
 #TH02
-thomas <- read_delim("data/02thomas/Loan_Data.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
+thomas <- read_delim("data/02thomas/Loan_Data.csv.txt", delim = ";", escape_double = FALSE, trim_ws = TRUE)
 
 thomas <- thomas %>%
   mutate_at(vars(BAD, PHON), as.factor) %>%
@@ -88,7 +88,7 @@ thomas$YOB_flag <- as.factor(ifelse(thomas$YOB == 99, 1, 0))
 thomas$DHVAL_flag <- as.factor(ifelse(thomas$DHVAL == 0, 1, 0))
 thomas$DMORT_flag <- as.factor(ifelse(thomas$DMORT == 0, 1, 0))
 
-save(thomas, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/thomas.Rda")
+save(thomas, file = "data/GOLD/thomas.Rda")
 
 #LC
 LC <- read_delim("data/LC/LC.csv", delim = ",", escape_double = FALSE, trim_ws = TRUE, col_names = FALSE)
@@ -99,7 +99,7 @@ LC <- LC %>%
   mutate(label = factor(label, 
                         labels = make.names(levels(label))))
 
-save(LC, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/LC.Rda")
+save(LC, file = "data/GOLD/LC.Rda")
 
 #TC
 TC <- read_excel("data/default+of+credit+card+clients/default of credit card clients.xls", trim_ws = TRUE, range=cell_rows(2:30002), col_names = TRUE)
@@ -112,7 +112,7 @@ TC <- TC %>%
   mutate(label = factor(label, 
                         labels = make.names(levels(label))))
 
-save(TC, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/TC.Rda")
+save(TC, file = "data/GOLD/TC.Rda")
 
 #PAKDD
 PAKDD <- read_delim("data/PAKDD 2010/PAKDD.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
@@ -134,4 +134,4 @@ for (col in columns_to_flag) {
   PAKDD[[flag_col_name]] <- as.factor(ifelse(is.na(PAKDD[[col]]), 1, 0))
 }
 
-save(PAKDD, file = "C:/Users/simon/Documents/GitHub/Thesis/data/GOLD/PAKDD.Rda")
+save(PAKDD, file = "data/GOLD/PAKDD.Rda")

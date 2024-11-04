@@ -12,6 +12,7 @@ p_load(glmnet, glmnetUtils, mgcv, MASS, tidyverse, xgboost, DiagrammeR, stringr,
 
 source("./src/misc.R")
 source("./src/SRE.R")
+source("./src/PLTR.R")
 source("./src/hyperparameters.R")
 source("./src/BigSummary.R")
 source("./src/data_loader.R")
@@ -38,9 +39,9 @@ metric_results <- data.frame(
 )
 predictions <- list()
 
-dataset_counter = 4
+dataset_counter = 1
 
-for(dataset in datasets[4:5]) {
+for(dataset in datasets[1]) {
   
   AUC_results <- metric_results
   Brier_results <- metric_results
@@ -158,11 +159,11 @@ for(dataset in datasets[4:5]) {
       control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
     )
     
-    best_model_auc <- LRR_tuned %>% select_best("roc_auc")
+    best_model_auc <- LRR_tuned %>% select_best(metric="roc_auc")
     final_LRR_wf_auc <- LRR_wf %>% finalize_workflow(best_model_auc)
     final_LRR_fit_auc <- final_LRR_wf_auc %>% last_fit(folds$splits[[i]], metrics = metrics)
 
-    best_model_brier <- LRR_tuned %>% select_best("brier_class")
+    best_model_brier <- LRR_tuned %>% select_best(metric="brier_class")
     final_LRR_wf_brier <- LRR_wf %>% finalize_workflow(best_model_brier)
     final_LRR_fit_brier <- final_LRR_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
     
@@ -370,11 +371,11 @@ for(dataset in datasets[4:5]) {
     )
     
     
-    best_model_auc <- RF_tuned %>% select_best("roc_auc")
+    best_model_auc <- RF_tuned %>% select_best(metric="roc_auc")
     final_RF_wf_auc <- RF_wf %>% finalize_workflow(best_model_auc)
     final_RF_fit_auc <- final_RF_wf_auc %>% last_fit(folds$splits[[i]], metrics = metrics)
     
-    best_model_brier <- RF_tuned %>% select_best("brier_class")
+    best_model_brier <- RF_tuned %>% select_best(metric="brier_class")
     final_RF_wf_brier <- RF_wf %>% finalize_workflow(best_model_brier)
     final_RF_fit_brier <- final_RF_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
     
@@ -435,11 +436,11 @@ for(dataset in datasets[4:5]) {
       control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
     )
 
-    best_booster_auc <- xgb_tuned %>% select_best("roc_auc")
+    best_booster_auc <- xgb_tuned %>% select_best(metric="roc_auc")
     final_xgb_wf_auc <- xgb_wf %>% finalize_workflow(best_booster_auc)
     final_xgb_fit_auc <- final_xgb_wf_auc %>% last_fit(folds$splits[[i]], metrics = metrics)
     
-    best_booster_brier <- xgb_tuned %>% select_best("brier_class")
+    best_booster_brier <- xgb_tuned %>% select_best(metric="brier_class")
     final_xgb_wf_brier <- xgb_wf %>% finalize_workflow(best_booster_brier)
     final_xgb_fit_brier <- final_xgb_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
 
@@ -496,11 +497,11 @@ for(dataset in datasets[4:5]) {
       control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
     )
     
-    best_booster_auc <- lgbm_tuned %>% select_best("roc_auc")
+    best_booster_auc <- lgbm_tuned %>% select_best(metric="roc_auc")
     final_lgbm_wf_auc <- lgbm_wf %>% finalize_workflow(best_booster_auc)
     final_lgbm_fit_auc <- final_lgbm_wf_auc %>% last_fit(folds$splits[[i]], metrics = metrics)
     
-    best_booster_brier <- lgbm_tuned %>% select_best("brier_class")
+    best_booster_brier <- lgbm_tuned %>% select_best(metric="brier_class")
     final_lgbm_wf_brier <- lgbm_wf %>% finalize_workflow(best_booster_brier)
     final_lgbm_fit_brier <- final_lgbm_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
     
@@ -836,11 +837,41 @@ for(dataset in datasets[4:5]) {
     pg <- SRE_boosting$best_PG %>%
       collect_pg()
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE_boosting", pg)
+    
+    ######
+    # PLTR
+    ######
+    
+    source("./src/PLTR.R")
+    
+    print("PLTR")
+    PLTR <- cv.PLTR(inner_split, metrics, train_bake, test_bake)
+    
+    auc <- PLTR$best_AUC %>%
+      collect_metrics() %>%
+      filter(.metric == "roc_auc") %>%
+      pull(.estimate)
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "PLTR", auc)
+    
+    brier <- PLTR$best_Brier %>%
+      collect_metrics() %>%
+      filter(.metric == "brier_class") %>%
+      pull(.estimate)
+    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "PLTR", brier)
+    
+    pg <- PLTR$best_PG %>%
+      collect_pg()
+    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "PLTR", pg)
+    
+    # Predictions
+    PLTR_predictions_AUC <- PLTR$best_AUC$.predictions[[1]]$.pred_X1
+    PLTR_predictions_Brier <- PLTR$best_Brier$.predictions[[1]]$.pred_X1
+    PLTR_predictions_PG <- PLTR$best_PG$.predictions[[1]]$.pred_X1
   
     
-    predictions_AUC = cbind(LRR_predictions_AUC, GAM_predictions, LDA_predictions, CTREE_predictions_AUC, RF_predictions_AUC, XGB_predictions_AUC, LGBM_predictions_AUC, RE_RF_predictions_AUC, RE_boosting_predictions_AUC, RE_bag_predictions, SRE_RF_predictions_AUC, SRE_bag_predictions_AUC, SRE_boosting_predictions_AUC)
-    predictions_Brier = cbind(LRR_predictions_Brier, GAM_predictions, LDA_predictions, CTREE_predictions_Brier, RF_predictions_Brier, XGB_predictions_Brier, LGBM_predictions_Brier, RE_RF_predictions_Brier, RE_boosting_predictions_Brier, RE_bag_predictions, SRE_RF_predictions_Brier, SRE_bag_predictions_Brier, SRE_boosting_predictions_Brier)
-    predictions_PG = cbind(LRR_predictions_PG, GAM_predictions, LDA_predictions, CTREE_predictions_PG, RF_predictions_PG, XGB_predictions_PG, LGBM_predictions_PG, RE_RF_predictions_PG, RE_boosting_predictions_PG, RE_bag_predictions, SRE_RF_predictions_PG, SRE_bag_predictions_PG, SRE_boosting_predictions_PG)
+    predictions_AUC = cbind(LRR_predictions_AUC, GAM_predictions, LDA_predictions, CTREE_predictions_AUC, RF_predictions_AUC, XGB_predictions_AUC, LGBM_predictions_AUC, RE_RF_predictions_AUC, RE_boosting_predictions_AUC, RE_bag_predictions, PLTR_predictions_AUC, SRE_RF_predictions_AUC, SRE_bag_predictions_AUC, SRE_boosting_predictions_AUC)
+    predictions_Brier = cbind(LRR_predictions_Brier, GAM_predictions, LDA_predictions, CTREE_predictions_Brier, RF_predictions_Brier, XGB_predictions_Brier, LGBM_predictions_Brier, RE_RF_predictions_Brier, RE_boosting_predictions_Brier, RE_bag_predictions, PLTR_predictions_Brier, SRE_RF_predictions_Brier, SRE_bag_predictions_Brier, SRE_boosting_predictions_Brier)
+    predictions_PG = cbind(LRR_predictions_PG, GAM_predictions, LDA_predictions, CTREE_predictions_PG, RF_predictions_PG, XGB_predictions_PG, LGBM_predictions_PG, RE_RF_predictions_PG, RE_boosting_predictions_PG, RE_bag_predictions, PLTR_predictions_PG, SRE_RF_predictions_PG, SRE_bag_predictions_PG, SRE_boosting_predictions_PG)
     write.csv(predictions_AUC, file = paste("./predictions/",dataset_vector[dataset_counter],"_predictions_repeat_", i, "_AUC.csv", sep = ""))
     write.csv(predictions_Brier, file = paste("./predictions/",dataset_vector[dataset_counter],"_predictions_repeat_", i, "_Brier.csv", sep = ""))
     write.csv(predictions_PG, file = paste("./predictions/",dataset_vector[dataset_counter],"_predictions_repeat_", i, "_PG.csv", sep = ""))
