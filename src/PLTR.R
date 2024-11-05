@@ -13,11 +13,12 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
   
   full_metrics_PLTR_ridge <- list()
   full_metrics_PG_PLTR_ridge <- list()
+  full_metrics_EMP_PLTR_ridge <- list()
   
   full_metrics_AUC <- list()
   full_metrics_Brier <- list()
   full_metrics_PG <- list()
-  
+  full_metrics_EMP <- list()
   
   
   for(k in 1:nrow(inner_split)) {
@@ -95,6 +96,15 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
     
     full_metrics_PG_PLTR_ridge <- rbind(full_metrics_PG_PLTR_ridge, metrics_PLTR_ridge_PG)
     
+    #for emp
+    metrics_PLTR_ridge_EMP <- suppressMessages(PLTR_ridge_tuned%>%collect_predictions(summarize = FALSE) %>%
+                                                group_by(id, penalty, .config) %>%
+                                                summarise(emp = empCreditScoring(.pred_X1, label)$EMPC))
+    metrics_PLTR_ridge_EMP$fold <- rep(k, nrow(metrics_PLTR_ridge_EMP))
+    
+    full_metrics_EMP_PLTR_ridge <- rbind(full_metrics_EMP_PLTR_ridge, metrics_PLTR_ridge_EMP)
+    
+    
     best_ridge_auc <- PLTR_ridge_tuned %>% select_best(metric="roc_auc")
     final_ridge_wf_auc <- PLTR_ridge_wf %>% finalize_workflow(best_ridge_auc)
     final_ridge_fit_auc <- final_ridge_wf_auc %>% last_fit(PLTR_split$splits[[k]], metrics = metrics)
@@ -109,6 +119,12 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
     final_ridge_wf_PG <- PLTR_ridge_wf %>% finalize_workflow(best_ridge_PG)
     final_ridge_fit_PG <- final_ridge_wf_PG %>% last_fit(PLTR_split$splits[[k]], metrics = metrics)
     ridge_penalties_PG <- coef((final_ridge_fit_PG%>%extract_fit_engine()), s=best_ridge_PG$penalty)
+    
+    best_ridge_EMP <- PLTR_ridge_tuned %>% select_best_emp_SRE()
+    final_ridge_wf_EMP <- PLTR_ridge_wf %>% finalize_workflow(best_ridge_EMP)
+    final_ridge_fit_EMP <- final_ridge_wf_EMP %>% last_fit(PLTR_split$splits[[k]], metrics = metrics)
+    ridge_penalties_EMP <- coef((final_ridge_fit_EMP%>%extract_fit_engine()), s=best_ridge_EMP$penalty)
+    
     
     ####### 
     # Fit regular lasso for AUC, Brier, PG
@@ -137,6 +153,15 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
       ) %>%
       set_engine("glmnet", penalty_factor = 1/abs(ridge_penalties_PG[-1]))
     
+    PLTR_model_EMP <- 
+      parsnip::logistic_reg(
+        mode = "classification",
+        mixture = 1,
+        penalty = tune()
+      ) %>%
+      set_engine("glmnet", penalty_factor = 1/abs(ridge_penalties_EMP[-1]))
+    
+    
     PLTR_wf_AUC <- workflow() %>%
       add_recipe(PLTR_recipe) %>%
       add_model(PLTR_model_AUC)
@@ -148,7 +173,12 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
     PLTR_wf_PG <- workflow() %>%
       add_recipe(PLTR_recipe) %>%
       add_model(PLTR_model_PG)
+
+    PLTR_wf_EMP <- workflow() %>%
+      add_recipe(PLTR_recipe) %>%
+      add_model(PLTR_model_EMP)
     
+        
     PLTR_tuned_AUC <- tune::tune_grid(
       object = PLTR_wf_AUC,
       resamples = PLTR_split,
@@ -170,6 +200,13 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
       metrics = metrics,
       control = tune::control_grid(verbose = TRUE, save_pred = TRUE))
     
+    PLTR_tuned_EMP <- tune::tune_grid(
+      object = PLTR_wf_EMP,
+      resamples = PLTR_split,
+      grid = hyperparameters_SRE_tidy, 
+      metrics = metrics,
+      control = tune::control_grid(verbose = TRUE, save_pred = TRUE))
+    
     #for auc, brier
     metrics_PLTR_AUC <- PLTR_tuned_AUC$.metrics[[1]]
     metrics_PLTR_Brier <- PLTR_tuned_Brier$.metrics[[1]]
@@ -186,6 +223,15 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
     metrics_PLTR_PG$fold <- rep(k, nrow(metrics_PLTR_PG))
     
     full_metrics_PG <- rbind(full_metrics_PG, metrics_PLTR_PG)
+    
+    #for emp
+    metrics_PLTR_EMP <- suppressMessages(PLTR_tuned_EMP%>%collect_predictions(summarize = FALSE) %>%
+                                          group_by(id, penalty, .config) %>%
+                                          summarise(emp = empCreditScoring(.pred_X1, label)$EMPC))
+    metrics_PLTR_EMP$fold <- rep(k, nrow(metrics_PLTR_EMP))
+    
+    full_metrics_EMP <- rbind(full_metrics_EMP, metrics_PLTR_EMP)
+    
   }
   
   print("hyperparameters found")
@@ -197,10 +243,13 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
     summarise(mean_perf = mean(.estimate))
   aggregated_metrics_ridge_PG <- full_metrics_PG_PLTR_ridge %>% group_by(penalty, .config) %>%
     summarise(mean_perf = mean(partial_gini))
+  aggregated_metrics_ridge_EMP <- full_metrics_EMP_PLTR_ridge %>% group_by(penalty, .config) %>%
+    summarise(mean_perf = mean(emp))
   
   best_lambda_ridge_auc <- aggregated_metrics_ridge_AUC_Brier %>% filter(.metric=="roc_auc") %>% ungroup() %>% slice_max(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
   best_lambda_ridge_brier <- aggregated_metrics_ridge_AUC_Brier %>% filter(.metric=="brier_class") %>% ungroup() %>% slice_min(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
   best_lambda_ridge_pg <- aggregated_metrics_ridge_PG %>% ungroup() %>% slice_max(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
+  best_lambda_ridge_emp <- aggregated_metrics_ridge_EMP %>% ungroup() %>% slice_max(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
   
   
   # Lasso
@@ -210,10 +259,13 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
     summarise(mean_perf = mean(.estimate))
   aggregated_metrics_PG <- full_metrics_PG %>% group_by(penalty, .config) %>%
     summarise(mean_perf = mean(partial_gini))
+  aggregated_metrics_EMP <- full_metrics_EMP %>% group_by(penalty, .config) %>%
+    summarise(mean_perf = mean(emp))
   
   best_lambda_auc <- aggregated_metrics_AUC %>% filter(.metric=="roc_auc") %>% ungroup() %>% slice_max(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
   best_lambda_brier <- aggregated_metrics_Brier %>% filter(.metric=="brier_class") %>% ungroup() %>% slice_min(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
   best_lambda_pg <- aggregated_metrics_PG %>% ungroup() %>% slice_max(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
+  best_lambda_emp <- aggregated_metrics_EMP %>% ungroup() %>% slice_max(mean_perf) %>% slice_head() %>% dplyr::select(penalty) %>% pull()
   
   lambda_sd_auc <- sd(unlist(
     full_metrics_AUC %>% filter(.metric=="roc_auc") %>%
@@ -242,10 +294,20 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
       dplyr::select(penalty)    
   ))
   
+  lambda_sd_emp <- sd(unlist(
+    full_metrics_EMP %>% 
+      group_by(fold) %>%
+      slice_max(emp) %>%
+      slice_head() %>%
+      ungroup() %>%
+      dplyr::select(penalty)    
+  ))
+  
   
   lambda_1se_auc <- best_lambda_auc + lambda_sd_auc
   lambda_1se_brier <- best_lambda_brier + lambda_sd_brier
   lambda_1se_pg <- best_lambda_pg + lambda_sd_pg
+  lambda_1se_emp <- best_lambda_emp + lambda_sd_emp
   
   
   
@@ -322,17 +384,31 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
   PLTR_wf_ridge_pg <- workflow() %>%
     #add_formula(label~.) %>%
     add_recipe(PLTR_recipe) %>%
-    add_model(PLTR_model_ridge_pg)    
+    add_model(PLTR_model_ridge_pg)
+  
+  PLTR_model_ridge_emp <- 
+    parsnip::logistic_reg(
+      mode = "classification",
+      mixture = 0,
+      penalty = best_lambda_ridge_emp    #sd can be very high for PG resulting in way too high lambda, leaving only the intercept
+    ) %>%
+    set_engine("glmnet")
+  
+  PLTR_wf_ridge_emp <- workflow() %>%
+    #add_formula(label~.) %>%
+    add_recipe(PLTR_recipe) %>%
+    add_model(PLTR_model_ridge_emp)    
+  
   
   final_ridge_fit_auc <- PLTR_wf_ridge_auc %>% last_fit(PLTR_split$splits[[1]], metrics = metrics)
   final_ridge_fit_brier <- PLTR_wf_ridge_brier %>% last_fit(PLTR_split$splits[[1]], metrics = metrics)
   final_ridge_fit_pg <- PLTR_wf_ridge_pg %>% last_fit(PLTR_split$splits[[1]], metrics = metrics)
+  final_ridge_fit_emp <- PLTR_wf_ridge_emp %>% last_fit(PLTR_split$splits[[1]], metrics = metrics)
   
   ridge_penalties_AUC <- coef((final_ridge_fit_auc%>%extract_fit_engine()), s=best_lambda_ridge_auc)
   ridge_penalties_Brier <- coef((final_ridge_fit_Brier%>%extract_fit_engine()), s=best_lambda_ridge_brier)
   ridge_penalties_PG <- coef((final_ridge_fit_PG%>%extract_fit_engine()), s=best_lambda_ridge_pg)
-  
-  
+  ridge_penalties_EMP <- coef((final_ridge_fit_EMP%>%extract_fit_engine()), s=best_lambda_ridge_emp)
   
   
   
@@ -376,10 +452,25 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
   PLTR_wf_pg <- workflow() %>%
     #add_formula(label~.) %>%
     add_recipe(PLTR_recipe) %>%
-    add_model(PLTR_model_pg)    
+    add_model(PLTR_model_pg) 
+  
+  PLTR_model_emp <- 
+    parsnip::logistic_reg(
+      mode = "classification",
+      mixture = 1,
+      penalty = best_lambda_emp    #sd can be very high for EMP resulting in way too high lambda, leaving only the intercept
+    ) %>%
+    set_engine("glmnet", penalty.factors = 1 / abs(ridge_penalties_EMP[-1]))
+  
+  PLTR_wf_emp <- workflow() %>%
+    #add_formula(label~.) %>%
+    add_recipe(PLTR_recipe) %>%
+    add_model(PLTR_model_emp)    
+  
   
   final_PLTR_fit_auc <- PLTR_wf_auc %>% last_fit(PLTR_split$splits[[1]], metrics = metrics)
   final_PLTR_fit_brier <- PLTR_wf_brier %>% last_fit(PLTR_split$splits[[1]], metrics = metrics)
   final_PLTR_fit_pg <- PLTR_wf_pg %>% last_fit(PLTR_split$splits[[1]], metrics = metrics)
-  return(list(best_AUC = final_PLTR_fit_auc, best_Brier = final_PLTR_fit_brier, best_PG = final_PLTR_fit_pg))
+  final_PLTR_fit_emp <- PLTR_wf_emp %>% last_fit(PLTR_split$splits[[1]], metrics = metrics)
+  return(list(best_AUC = final_PLTR_fit_auc, best_Brier = final_PLTR_fit_brier, best_PG = final_PLTR_fit_pg, best_EMP = final_PLTR_fit_emp))
 }

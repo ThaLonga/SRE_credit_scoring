@@ -154,6 +154,128 @@ collect_pg <- function(.data) {
   })
 }
 
+select_best_emp_LRR <- function(.data) {
+  suppressMessages({.data %>%
+      collect_predictions(summarize = TRUE) %>%
+      group_by(penalty, mixture, .config) %>%
+      summarise(emp = empCreditScoring(.pred_X1, label)$EMPC) %>%
+      group_by(penalty, mixture, .config) %>%
+      summarise(avg_emp = mean(emp)) %>%
+      ungroup() %>%
+      slice_max(avg_emp) %>%
+      slice_head() %>%
+      dplyr::select(penalty, mixture, .config)})
+}
+
+select_best_emp_SRE <- function(.data) {
+  suppressMessages({.data %>%
+      collect_predictions(summarize = FALSE) %>%
+      group_by(id, penalty, .config) %>%
+      summarise(emp = empCreditScoring(.pred_X1, label)$EMPC) %>%
+      group_by(penalty, .config) %>%
+      summarise(avg_emp = mean(emp)) %>%
+      ungroup() %>%
+      slice_max(avg_emp) %>%
+      slice_head() %>%
+      dplyr::select(penalty, .config)})
+}
+
+select_best_emp_XGB <- function(.data) {
+  suppressMessages({.data %>%
+      collect_predictions(summarize = TRUE) %>%
+      group_by(trees, tree_depth, learn_rate, sample_size, loss_reduction, .config) %>%
+      summarise(emp = empCreditScoring(.pred_X1, label)$EMPC) %>%
+      group_by(trees, tree_depth, learn_rate, sample_size, loss_reduction, .config) %>%
+      summarise(avg_emp = mean(emp)) %>%
+      ungroup() %>%
+      slice_max(avg_emp) %>%
+      slice_head() %>%
+      dplyr::select(trees, tree_depth, learn_rate, sample_size, loss_reduction, .config)})
+}
+
+select_best_emp_LGBM <- function(.data) {
+  suppressMessages({.data %>%
+      collect_predictions(summarize = TRUE) %>%
+      group_by(trees, tree_depth, learn_rate, sample_size, loss_reduction, .config) %>%
+      summarise(emp = empCreditScoring(.pred_X1, label)$EMPC) %>%
+      group_by(trees, tree_depth, learn_rate, sample_size, loss_reduction, .config) %>%
+      summarise(avg_emp = mean(emp)) %>%
+      ungroup() %>%
+      slice_max(avg_emp) %>%
+      slice_head() %>%
+      dplyr::select(trees, tree_depth, learn_rate, sample_size, loss_reduction, .config)})
+}
+
+select_best_emp_RF <- function(.data) {
+  suppressMessages({.data %>%
+      collect_predictions(summarize = TRUE) %>%
+      group_by(trees, mtry, min_n, .config) %>%
+      summarise(emp = empCreditScoring(.pred_X1, label)$EMPC) %>%
+      group_by(trees, mtry, min_n, .config) %>%
+      summarise(avg_emp = mean(emp)) %>%
+      ungroup() %>%
+      slice_max(avg_emp) %>%
+      slice_head() %>%
+      dplyr::select(trees, mtry, min_n, .config)})
+}
+
+select_best_emp_RE <- function(.data) {
+  suppressMessages({.data %>%
+      collect_predictions(summarize = TRUE) %>%
+      group_by(tree_depth, learn_rate, penalty, .config) %>%
+      summarise(emp = empCreditScoring(.pred_X1, label)$EMPC) %>%
+      group_by(tree_depth, learn_rate, penalty, .config) %>%
+      summarise(avg_emp = mean(emp)) %>%
+      ungroup() %>%
+      slice_max(avg_emp) %>%
+      slice_head() %>%
+      dplyr::select(tree_depth, learn_rate, penalty, .config)})
+}
+
+
+collect_emp <- function(.data) {
+  suppressMessages({.data %>%
+      collect_predictions() %>%
+      summarise(emp = empCreditScoring(.pred_X1, label)$EMPC)
+  })
+}
+
+select_best_emp_CTREE <- function(.data) {
+  .data$pred %>%
+    group_by(mincriterion) %>%
+    summarise(emp = empCreditScoring(X1, obs)$EMPC) %>%
+    group_by(mincriterion) %>%
+    summarise(avg_emp = mean(emp)) %>%
+    ungroup() %>%
+    slice_max(avg_emp) %>%
+    slice_head() %>%
+    dplyr::select(mincriterion)
+}
+
+select_best_emp_RE_boosting <- function(.data) {
+  .data$pred %>%
+    group_by(maxdepth, learnrate) %>%
+    summarise(emp = empCreditScoring(X1, obs)$EMPC) %>%
+    group_by(maxdepth, learnrate) %>%
+    summarise(avg_emp = mean(emp)) %>%
+    ungroup() %>%
+    slice_max(avg_emp) %>%
+    slice_head() %>%
+    dplyr::select(maxdepth, learnrate)
+}
+
+select_best_emp_RE_RF <- function(.data) {
+  .data$pred %>%
+    group_by(maxdepth, mtry) %>%
+    summarise(emp = empCreditScoring(X1, obs)$EMPC) %>%
+    group_by(maxdepth, mtry) %>%
+    summarise(avg_emp = mean(emp)) %>%
+    ungroup() %>%
+    slice_max(avg_emp) %>%
+    slice_head() %>%
+    dplyr::select(maxdepth, mtry)
+}
+
 #to fit rules from pre package on dataframe that is baked with TREE_recipe
 #obtain by applying "$rules$description" on model
 fit_rules <- function(dataframe, rules) {

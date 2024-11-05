@@ -1,6 +1,6 @@
 # main
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
-p_load(glmnet, glmnetUtils, mgcv, MASS, tidyverse, xgboost, DiagrammeR, stringr, tictoc, doParallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai, rlang, yardstick, bonsai, lightgbm, ranger, tune, DescTools, rules, discrim)
+p_load(glmnet, glmnetUtils, mgcv, MASS, tidyverse, xgboost, DiagrammeR, stringr, tictoc, doParallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai, rlang, yardstick, bonsai, lightgbm, ranger, tune, DescTools, rules, discrim, EMP, party)
 
 #conventions:
 # target variable = label
@@ -46,6 +46,7 @@ for(dataset in datasets[1]) {
   AUC_results <- metric_results
   Brier_results <- metric_results
   PG_results <- metric_results
+  EMP_results <- metric_results
   
   nr_innerfolds = nr_repeats
   
@@ -125,9 +126,14 @@ for(dataset in datasets[1]) {
     set.seed(innerseed)
     inner_split <- train %>% validation_split(prop=3/4)
     inner_ids_in <- inner_split$splits[[1]]$in_id
-    ctrl <- trainControl(method="LGOCV", number=1, 
+    ctrl <- trainControl(method="LGOCV",
+                         number=1, 
                          index = list(inner_ids_in), 
-                         classProbs=TRUE, summaryFunction=BigSummary, search="grid", allowParallel=TRUE)
+                         classProbs=TRUE, 
+                         summaryFunction=BigSummary, 
+                         search="grid", 
+                         allowParallel=TRUE,
+                         savePredictions = "all")
     
     
     ############################################################################
@@ -138,7 +144,7 @@ for(dataset in datasets[1]) {
     # LRR
     #####
     print("LRR")
-    
+    tic()
     LRR_model <- 
       parsnip::logistic_reg(
         mode = "classification",
@@ -156,8 +162,9 @@ for(dataset in datasets[1]) {
       resamples = inner_split,
       grid = hyperparameters_LR_R_tidy, 
       metrics = metrics,
-      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
+      control = tune::control_grid(verbose = TRUE, save_pred = TRUE, parallel_over = "everything")
     )
+    toc()
     
     best_model_auc <- LRR_tuned %>% select_best(metric="roc_auc")
     final_LRR_wf_auc <- LRR_wf %>% finalize_workflow(best_model_auc)
@@ -170,11 +177,16 @@ for(dataset in datasets[1]) {
     best_model_pg <- LRR_tuned %>% select_best_pg_LRR()
     final_LRR_wf_pg <- LRR_wf %>% finalize_workflow(best_model_pg)
     final_LRR_fit_pg <- final_LRR_wf_pg %>% last_fit(folds$splits[[i]], metrics = metrics)
+
+    best_model_emp <- LRR_tuned %>% select_best_emp_LRR()
+    final_LRR_wf_emp <- LRR_wf %>% finalize_workflow(best_model_emp)
+    final_LRR_fit_emp <- final_LRR_wf_emp %>% last_fit(folds$splits[[i]], metrics = metrics)
     
     #Save predictions
     LRR_predictions_AUC <- final_LRR_fit_auc$.predictions[[1]]$.pred_X1
     LRR_predictions_Brier <- final_LRR_fit_brier$.predictions[[1]]$.pred_X1
     LRR_predictions_PG <- final_LRR_fit_pg$.predictions[[1]]$.pred_X1
+    LRR_predictions_EMP <- final_LRR_fit_emp$.predictions[[1]]$.pred_X1
     
     auc <- final_LRR_fit_auc %>%
       collect_metrics() %>%
@@ -191,6 +203,10 @@ for(dataset in datasets[1]) {
     pg <- final_LRR_fit_pg %>%
       collect_pg()
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "LRR", pg)
+    
+    emp <- final_LRR_fit_pg %>%
+      collect_emp()
+    EMP_results[nrow(EMP_results) + 1,] = list(dataset_vector[dataset_counter], i, "LRR", emp)
     
     #####
     # GAM
@@ -239,6 +255,11 @@ for(dataset in datasets[1]) {
       collect_pg()
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "GAM", pg)
     
+    emp <- final_GAM_fit %>%
+      collect_emp()
+    EMP_results[nrow(EMP_results) + 1,] = list(dataset_vector[dataset_counter], i, "GAM", emp)
+    
+    
     
     
     #####
@@ -266,6 +287,9 @@ for(dataset in datasets[1]) {
     
     pg <- partialGini(actuals = LDA_preds$label, preds = LDA_preds$X1)    
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", pg)
+    
+    emp <- empCreditScoring(classes = LDA_preds$label, scores = LDA_preds$X1)$EMPC    
+    EMP_results[nrow(EMP_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", emp)
     
     
     #####
@@ -310,6 +334,7 @@ for(dataset in datasets[1]) {
     g <- roc(label ~ X1, data = CTREE_preds, direction = "<")
     AUC <- g$auc
     AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "CTREE", AUC)
+    
     #Brier
     
     CTREE_model_Brier <- train(TREE_recipe, data = train, method = "ctree",
@@ -325,13 +350,25 @@ for(dataset in datasets[1]) {
     #PG
     
     CTREE_model_PG <- train(TREE_recipe, data = train, method = "ctree",
-                               tuneGrid = expand.grid(mincriterion = (CTREE_model$results%>%slice_max(partialGini)%>%dplyr::select(mincriterion))[[1]]))
+                            tuneGrid = expand.grid(mincriterion = (CTREE_model$results%>%slice_max(partialGini)%>%dplyr::select(mincriterion))[[1]]))
     CTREE_preds <- predict(CTREE_model_PG, test, type = 'prob')
     CTREE_preds$label <- test$label
     CTREE_predictions_PG <- CTREE_preds$X1
     
     pg <- partialGini(CTREE_preds$X1, CTREE_preds$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "CTREE", pg)
+    
+    #EMP
+    mincriterion_EMP <- select_best_emp_CTREE(CTREE_model)
+    
+    CTREE_model_EMP <- train(TREE_recipe, data = train, method = "ctree",
+                            tuneGrid = expand.grid(mincriterion = (mincriterion_EMP[[1]])))
+    CTREE_preds <- predict(CTREE_model_EMP, test, type = 'prob')
+    CTREE_preds$label <- test$label
+    CTREE_predictions_EMP <- CTREE_preds$X1
+    
+    EMP <- empCreditScoring(CTREE_preds$X1, CTREE_preds$label)$EMPC
+    EMP_results[nrow(EMP_results) + 1,] = list(dataset_vector[dataset_counter], i, "CTREE", EMP)
     
     
     ############################################################################
@@ -367,7 +404,7 @@ for(dataset in datasets[1]) {
       resamples = inner_split,
       grid = hyperparameters_RF_tidy,
       metrics = metrics,
-      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
+      control = tune::control_grid(verbose = TRUE, save_pred = TRUE, parallel_over = "everything")
     )
     
     
@@ -383,10 +420,15 @@ for(dataset in datasets[1]) {
     final_RF_wf_pg <- RF_wf %>% finalize_workflow(best_model_pg)
     final_RF_fit_pg <- final_RF_wf_pg %>% last_fit(folds$splits[[i]], metrics = metrics)
     
+    best_model_emp <- RF_tuned %>% select_best_emp_RF()
+    final_RF_wf_emp <- RF_wf %>% finalize_workflow(best_model_emp)
+    final_RF_fit_emp <- final_RF_wf_emp %>% last_fit(folds$splits[[i]], metrics = metrics)
+    
     #Save predictions
     RF_predictions_AUC <- final_RF_fit_auc$.predictions[[1]]$.pred_X1
     RF_predictions_Brier <- final_RF_fit_brier$.predictions[[1]]$.pred_X1
     RF_predictions_PG <- final_RF_fit_pg$.predictions[[1]]$.pred_X1
+    RF_predictions_EMP <- final_RF_fit_emp$.predictions[[1]]$.pred_X1
     
     
     auc <- final_RF_fit_auc %>%
@@ -404,6 +446,10 @@ for(dataset in datasets[1]) {
     pg <- final_RF_fit_pg %>%
       collect_pg()
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", pg)
+    
+    emp <- final_RF_fit_emp %>%
+      collect_emp()
+    EMP_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", emp)
     
     
     #####
@@ -433,7 +479,7 @@ for(dataset in datasets[1]) {
       resamples = inner_split,
       grid = hyperparameters_XGB_tidy,
       metrics = metrics,
-      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
+      control = tune::control_grid(verbose = TRUE, save_pred = TRUE, parallel_over = "everything")
     )
 
     best_booster_auc <- xgb_tuned %>% select_best(metric="roc_auc")
@@ -448,10 +494,16 @@ for(dataset in datasets[1]) {
     final_xgb_wf_pg <- xgb_wf %>% finalize_workflow(best_booster_pg)
     final_xgb_fit_pg <- final_xgb_wf_pg %>% last_fit(folds$splits[[i]], metrics = metrics)
     
+    best_booster_emp <- xgb_tuned %>% select_best_emp_XGB()
+    final_xgb_wf_emp <- xgb_wf %>% finalize_workflow(best_booster_emp)
+    final_xgb_fit_emp <- final_xgb_wf_emp %>% last_fit(folds$splits[[i]], metrics = metrics)
+    
+    
     #Save predictions
     XGB_predictions_AUC <- final_xgb_fit_auc$.predictions[[1]]$.pred_X1
     XGB_predictions_Brier <- final_xgb_fit_brier$.predictions[[1]]$.pred_X1
     XGB_predictions_PG <- final_xgb_fit_pg$.predictions[[1]]$.pred_X1
+    XGB_predictions_EMP <- final_xgb_fit_emp$.predictions[[1]]$.pred_X1
     
     auc <- final_xgb_fit_auc %>%
       collect_metrics() %>%
@@ -469,6 +521,11 @@ for(dataset in datasets[1]) {
       collect_pg()
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", pg)
 
+    emp <- final_xgb_fit_emp %>%
+      collect_emp()
+    EMP_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "XGB", emp)
+    
+    
     #####
     # LightGBM
     #####
@@ -494,7 +551,7 @@ for(dataset in datasets[1]) {
       resamples = inner_split, 
       grid = hyperparameters_LGBM_tidy, 
       metrics = metrics,
-      control = tune::control_grid(verbose = TRUE, save_pred = TRUE)
+      control = tune::control_grid(verbose = TRUE, save_pred = TRUE, parallel_over = "everything")
     )
     
     best_booster_auc <- lgbm_tuned %>% select_best(metric="roc_auc")
@@ -509,10 +566,16 @@ for(dataset in datasets[1]) {
     final_lgbm_wf_pg <- lgbm_wf %>% finalize_workflow(best_model_pg)
     final_lgbm_fit_pg <- final_lgbm_wf_pg %>% last_fit(folds$splits[[i]], metrics = metrics)
     
+    best_model_emp <- lgbm_tuned %>% select_best_emp_LGBM()
+    final_lgbm_wf_emp <- lgbm_wf %>% finalize_workflow(best_model_emp)
+    final_lgbm_fit_emp <- final_lgbm_wf_emp %>% last_fit(folds$splits[[i]], metrics = metrics)
+    
+    
     #Save predictions
     LGBM_predictions_AUC <- final_lgbm_fit_auc$.predictions[[1]]$.pred_X1
     LGBM_predictions_Brier <- final_lgbm_fit_brier$.predictions[[1]]$.pred_X1
     LGBM_predictions_PG <- final_lgbm_fit_pg$.predictions[[1]]$.pred_X1
+    LGBM_predictions_EMP <- final_lgbm_fit_emp$.predictions[[1]]$.pred_X1
     
     auc <- final_lgbm_fit_auc %>%
       collect_metrics() %>%
@@ -529,6 +592,10 @@ for(dataset in datasets[1]) {
     pg <- final_lgbm_fit_pg %>%
       collect_pg()
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "LGBM", pg)
+
+    emp <- final_lgbm_fit_emp %>%
+      collect_emp()
+    EMP_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "LGBM", emp)
     
     ############################################################################
     # HETEROGENEOUS (RULE) ENSEMBLES 
@@ -606,6 +673,30 @@ for(dataset in datasets[1]) {
     pg <- partialGini(RE_preds_boosting$X1, RE_preds_boosting$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE_boosting", pg)
     
+    #EMP
+    RE_boosting_EMP_params <- select_best_emp_RE_boosting(RE_model_boosting)
+    RE_model_boosting_EMP <- train(XGB_recipe, data = train, method = "pre",
+                                  ntrees = min(100, round(nrow(train)/2)), family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+                                  tuneGrid = getModelInfo("pre")[[1]]$grid( 
+                                    maxdepth = (RE_boosting_EMP_params%>%dplyr::select(maxdepth))[[1]][1],
+                                    learnrate = (RE_boosting_EMP_params%>%dplyr::select(learnrate))[[1]][1],
+                                    penalty.par.val = c("lambda.1se"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
+                                    sampfrac = 1,
+                                    use.grad = TRUE), tree.unbiased = FALSE, ad.alpha = 0, singleconditions = FALSE,
+                                  winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
+                                  verbose = TRUE,
+                                  metric = "AUCROC", allowParallel = TRUE,
+                                  par.init=TRUE,
+                                  par.final=TRUE)
+    RE_preds_boosting <- predict(RE_model_boosting_EMP, test, type = 'prob')
+    RE_preds_boosting$label <- test$label
+    
+    #Save predictions
+    RE_boosting_predictions_EMP <- RE_preds_boosting$X1
+    
+    emp <- empCreditScoring(RE_preds_boosting$X1, RE_preds_boosting$label)$EMPC
+    EMP_results[nrow(EMP_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE_boosting", emp)
+    
     
     
     #####
@@ -665,19 +756,19 @@ for(dataset in datasets[1]) {
     
     #PG
     RE_model_RF_PG <- train(XGB_recipe, data = train, method = "pre",
-                         ntrees = 100, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
-                         tuneGrid = getModelInfo("pre")[[1]]$grid( 
-                           maxdepth = (RE_model_RF$results%>%slice_max(partialGini)%>%dplyr::select(maxdepth))[[1]][1],
-                           penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
-                           sampfrac = 1,
-                           mtry = (RE_model_RF$results%>%slice_max(partialGini)%>%dplyr::select(mtry))[[1]][1],
-                           use.grad = TRUE), ad.alpha = 0, #tree.unbiased = FALSE, 
-                         singleconditions = FALSE,
-                         winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
-                         verbose = TRUE,
-                         metric = "AUCROC", allowParallel = TRUE,
-                         par.init=TRUE,
-                         par.final=TRUE)
+                            ntrees = 100, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+                            tuneGrid = getModelInfo("pre")[[1]]$grid( 
+                              maxdepth = (RE_model_RF$results%>%slice_max(partialGini)%>%dplyr::select(maxdepth))[[1]][1],
+                              penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
+                              sampfrac = 1,
+                              mtry = (RE_model_RF$results%>%slice_max(partialGini)%>%dplyr::select(mtry))[[1]][1],
+                              use.grad = TRUE), ad.alpha = 0, #tree.unbiased = FALSE, 
+                            singleconditions = FALSE,
+                            winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
+                            verbose = TRUE,
+                            metric = "AUCROC", allowParallel = TRUE,
+                            par.init=TRUE,
+                            par.final=TRUE)
     RE_preds_RF <- predict(RE_model_RF_PG, test, type = 'prob')
     RE_preds_RF$label <- test$label
     
@@ -686,6 +777,31 @@ for(dataset in datasets[1]) {
     
     pg <- partialGini(RE_preds_RF$X1, RE_preds_RF$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE_RF", pg)
+    
+    #EMP
+    RE_RF_EMP_params <- select_best_emp_RE_RF(RE_model_RF)
+    RE_model_RF_EMP <- train(XGB_recipe, data = train, method = "pre",
+                            ntrees = 100, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+                            tuneGrid = getModelInfo("pre")[[1]]$grid( 
+                              maxdepth = (RE_RF_EMP_params%>%dplyr::select(maxdepth))[[1]][1],
+                              penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
+                              sampfrac = 1,
+                              mtry = (RE_RF_EMP_params%>%dplyr::select(mtry))[[1]][1],
+                              use.grad = TRUE), ad.alpha = 0, #tree.unbiased = FALSE, 
+                            singleconditions = FALSE,
+                            winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
+                            verbose = TRUE,
+                            metric = "AUCROC", allowParallel = TRUE,
+                            par.init=TRUE,
+                            par.final=TRUE)
+    RE_preds_RF <- predict(RE_model_RF_EMP, test, type = 'prob')
+    RE_preds_RF$label <- test$label
+    
+    #Save predictions
+    RE_RF_predictions_EMP <- RE_preds_RF$X1
+    
+    emp <- empCreditScoring(RE_preds_RF$X1, RE_preds_RF$label)$EMPC
+    EMP_results[nrow(EMP_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE_RF", emp)
     
     
     #####
@@ -726,6 +842,10 @@ for(dataset in datasets[1]) {
     pg <- partialGini(RE_preds_bag$X1, RE_preds_bag$label)
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE_bag", pg)
     
+    #EMP
+    emp <- empCreditScoring(RE_preds_bag$X1, RE_preds_bag$label)$EMPC
+    EMP_results[nrow(EMP_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE_bag", emp)
+    
     ######
     # SRE
     ######
@@ -737,6 +857,7 @@ for(dataset in datasets[1]) {
                      RE_model_AUC = RE_model_RF,
                      RE_model_Brier = RE_model_RF_Brier,
                      RE_model_PG = RE_model_RF_PG,
+                     RE_model_EMP = RE_model_RF_EMP,
                      GAM_recipe = GAM_recipe,
                      metrics = metrics,
                      train_bake = train_bake,
@@ -747,6 +868,7 @@ for(dataset in datasets[1]) {
     SRE_RF_predictions_AUC <- SRE_RF$best_AUC$.predictions[[1]]$.pred_X1
     SRE_RF_predictions_Brier <- SRE_RF$best_Brier$.predictions[[1]]$.pred_X1
     SRE_RF_predictions_PG <- SRE_RF$best_PG$.predictions[[1]]$.pred_X1
+    SRE_RF_predictions_EMP <- SRE_RF$best_EMP$.predictions[[1]]$.pred_X1
     
     ######
     # Extract metrics
@@ -766,6 +888,10 @@ for(dataset in datasets[1]) {
       collect_pg()
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE_RF", pg)
     
+    emp <- SRE_RF$best_EMP %>%
+      collect_emp()
+    EMP_results[nrow(EMP_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE_RF", emp)
+    
     print("SRE: bagging")
     
     SRE_bag <- cv.SRE(inner_split,
@@ -783,6 +909,7 @@ for(dataset in datasets[1]) {
     SRE_bag_predictions_AUC <- SRE_bag$best_AUC$.predictions[[1]]$.pred_X1
     SRE_bag_predictions_Brier <- SRE_bag$best_Brier$.predictions[[1]]$.pred_X1
     SRE_bag_predictions_PG <- SRE_bag$best_PG$.predictions[[1]]$.pred_X1
+    SRE_bag_predictions_EMP <- SRE_bag$best_EMP$.predictions[[1]]$.pred_X1
     
     ######
     # Extract metrics
@@ -802,6 +929,11 @@ for(dataset in datasets[1]) {
       collect_pg()
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE_bag", pg)
     
+    emp <- SRE_bag$best_EMP %>%
+      collect_emp()
+    EMP_results[nrow(EMP_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE_bag", emp)
+    
+    
     print("SRE: boosting")
     
     SRE_boosting <- cv.SRE(inner_split,
@@ -819,6 +951,7 @@ for(dataset in datasets[1]) {
     SRE_boosting_predictions_AUC <- SRE_boosting$best_AUC$.predictions[[1]]$.pred_X1
     SRE_boosting_predictions_Brier <- SRE_boosting$best_Brier$.predictions[[1]]$.pred_X1
     SRE_boosting_predictions_PG <- SRE_boosting$best_PG$.predictions[[1]]$.pred_X1
+    SRE_boosting_predictions_EMP <- SRE_boosting$best_EMP$.predictions[[1]]$.pred_X1
     
     ######
     # Extract metrics
@@ -837,6 +970,10 @@ for(dataset in datasets[1]) {
     pg <- SRE_boosting$best_PG %>%
       collect_pg()
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE_boosting", pg)
+    
+    emp <- SRE_boosting$best_EMP %>%
+      collect_emp()
+    EMP_results[nrow(EMP_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE_boosting", emp)
     
     ######
     # PLTR
@@ -863,18 +1000,25 @@ for(dataset in datasets[1]) {
       collect_pg()
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "PLTR", pg)
     
+    emp <- PLTR$best_EMP %>%
+      collect_emp()
+    EMP_results[nrow(EMP_results) + 1,] = list(dataset_vector[dataset_counter], i, "PLTR", emp)
+    
     # Predictions
     PLTR_predictions_AUC <- PLTR$best_AUC$.predictions[[1]]$.pred_X1
     PLTR_predictions_Brier <- PLTR$best_Brier$.predictions[[1]]$.pred_X1
     PLTR_predictions_PG <- PLTR$best_PG$.predictions[[1]]$.pred_X1
-  
+    PLTR_predictions_EMP <- PLTR$best_EMP$.predictions[[1]]$.pred_X1
+    
     
     predictions_AUC = cbind(LRR_predictions_AUC, GAM_predictions, LDA_predictions, CTREE_predictions_AUC, RF_predictions_AUC, XGB_predictions_AUC, LGBM_predictions_AUC, RE_RF_predictions_AUC, RE_boosting_predictions_AUC, RE_bag_predictions, PLTR_predictions_AUC, SRE_RF_predictions_AUC, SRE_bag_predictions_AUC, SRE_boosting_predictions_AUC)
     predictions_Brier = cbind(LRR_predictions_Brier, GAM_predictions, LDA_predictions, CTREE_predictions_Brier, RF_predictions_Brier, XGB_predictions_Brier, LGBM_predictions_Brier, RE_RF_predictions_Brier, RE_boosting_predictions_Brier, RE_bag_predictions, PLTR_predictions_Brier, SRE_RF_predictions_Brier, SRE_bag_predictions_Brier, SRE_boosting_predictions_Brier)
     predictions_PG = cbind(LRR_predictions_PG, GAM_predictions, LDA_predictions, CTREE_predictions_PG, RF_predictions_PG, XGB_predictions_PG, LGBM_predictions_PG, RE_RF_predictions_PG, RE_boosting_predictions_PG, RE_bag_predictions, PLTR_predictions_PG, SRE_RF_predictions_PG, SRE_bag_predictions_PG, SRE_boosting_predictions_PG)
+    predictions_EMP = cbind(LRR_predictions_EMP, GAM_predictions, LDA_predictions, CTREE_predictions_EMP, RF_predictions_EMP, XGB_predictions_EMP, LGBM_predictions_EMP, RE_RF_predictions_EMP, RE_boosting_predictions_EMP, RE_bag_predictions, PLTR_predictions_EMP, SRE_RF_predictions_EMP, SRE_bag_predictions_EMP, SRE_boosting_predictions_EMP)
     write.csv(predictions_AUC, file = paste("./predictions/",dataset_vector[dataset_counter],"_predictions_repeat_", i, "_AUC.csv", sep = ""))
     write.csv(predictions_Brier, file = paste("./predictions/",dataset_vector[dataset_counter],"_predictions_repeat_", i, "_Brier.csv", sep = ""))
     write.csv(predictions_PG, file = paste("./predictions/",dataset_vector[dataset_counter],"_predictions_repeat_", i, "_PG.csv", sep = ""))
+    write.csv(predictions_EMP, file = paste("./predictions/",dataset_vector[dataset_counter],"_predictions_repeat_", i, "_EMP.csv", sep = ""))
     
   }
   
