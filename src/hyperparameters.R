@@ -30,7 +30,7 @@ hyperparameters_XGB_tidy <- crossing(
   learn_rate = c(0.3, 0.4, 0.5), #B
   tree_depth = c(5), #default
   sample_size = c(0.5, 0.75, 1),
-  loss_reduction = c(0.01, 0.1, 1, 10)
+  loss_reduction = c(0.01, 0.1, 1, 100)
 )
 #meer lr en loss reduct
 
@@ -39,7 +39,7 @@ hyperparameters_LGBM_tidy <- crossing(
   learn_rate = c(0.3, 0.4, 0.5), #B
   tree_depth = c(5),
   sample_size = c(0.5, 0.75, 1),
-  loss_reduction = c(0.01, 0.1, 1, 10)
+  loss_reduction = c(0.01, 0.1, 1, 100)
 )
 
 preGrid_boosting <- getModelInfo("pre")[[1]]$grid( 
