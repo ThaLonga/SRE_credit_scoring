@@ -1,5 +1,5 @@
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
-p_load(glmnet, glmnetUtils, mgcv, MASS, tidyverse, xgboost, DiagrammeR, stringr, tictoc, doParallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai, rlang, yardstick, bonsai, lightgbm, ranger, tune, DescTools, rules, discrim)
+p_load(glmnet, glmnetUtils, mgcv, MASS, tidyverse, xgboost, DiagrammeR, stringr, tictoc, doParallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai, rlang, yardstick, bonsai, lightgbm, ranger, tune, DescTools, rules, discrim, party, partykit)
 source("./src/hyperparameters.R")
 
 cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE_model_PG, RE_model_EMP, GAM_recipe, metrics, train_bake, test_bake) {
@@ -35,7 +35,7 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
     
     #######
     # Rule ensembles
-    if(tree_algorithm=="bagging") {
+    if(identical(tree_algorithm,"bagging")) {
       cat("training RE")
       set.seed(k)
       RE_model_inner <- train(XGB_recipe, data = inner_train, method = "pre",
@@ -54,7 +54,7 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
       RE_model_inner_EMP = RE_model_inner
       
     }
-    else if(tree_algorithm=="randomforest") {
+    else if(identical(tree_algorithm,"randomforest")) {
       cat("training RE")
       set.seed(k)
       RE_model_inner_AUC <- train(XGB_recipe, data = inner_train, method = "pre",
@@ -127,7 +127,7 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
       
       
     }
-    else if(tree_algorithm=="boosting") {
+    else if(identical(tree_algorithm,"boosting")) {
       cat("training RE")
       set.seed(k)
       RE_model_inner_AUC <- train(XGB_recipe, data = inner_train, method = "pre",
@@ -195,7 +195,19 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
                                   par.init=TRUE,
                                   par.final=TRUE)      
     }
-          
+    else if(identical(tree_algorithm,"PLTR")) {
+      cat("training RE")
+      features <- setdiff(names(inner_train_bake), "label")  # Exclude the label column
+      combinations <- combn(features, 2)  # Generate all combinations of 2 features
+      rules = c()
+      for (j in 1:ncol(combinations)) {
+        feature_pair <- combinations[, j]
+        formula <- as.formula(paste("label ~", paste(feature_pair, collapse = " + ")))
+        tree <- as.party(rpart::rpart(formula, data = inner_train_bake, maxdepth = 2))
+        extracted_rules <- partykit:::.list.rules.party(tree)
+        if(extracted_rules[1]!= "") {rules <- c(rules, extracted_rules)}
+      }
+    }   
     
     ####### 
     # Fit GAM to extract splines only on numeric features with number of values >6
@@ -241,45 +253,77 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
     ####### 
     # Fit rules from RE_models, seperate for AUC, Brier, PG
     cat("fitting rules\n")
-    if(!is.null(RE_model_inner_AUC$finalModel$rules)) {
-      SRE_train_rules_AUC <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model_inner_AUC$finalModel$rules$description))$rules)
-      SRE_test_rules_AUC <- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model_inner_AUC$finalModel$rules$description))$rules)
-      
-      SRE_train_AUC <- cbind(SRE_train_rules_AUC, fitted_smooths_train)
-      SRE_test_AUC <- cbind(SRE_test_rules_AUC, fitted_smooths_test)
-    } else {
-      SRE_train_AUC <- cbind(inner_train_bake, fitted_smooths_train)
-      SRE_test_AUC <- cbind(inner_test_bake, fitted_smooths_test)
+    if(identical(tree_algorithm, "PLTR")) {
+      if(!is_empty(rules)) {
+        SRE_train_rules_AUC <- fit_rules(inner_train_bake, unique(rules))
+        SRE_test_rules_AUC <- fit_rules(inner_test_bake, unique(rules))
+        SRE_train_rules_Brier <- SRE_train_rules_AUC
+        SRE_test_rules_Brier <- SRE_test_rules_AUC
+        SRE_train_rules_PG <- SRE_train_rules_AUC
+        SRE_test_rules_PG <- SRE_test_rules_AUC
+        SRE_train_rules_EMP <- SRE_train_rules_AUC
+        SRE_test_rules_EMP <- SRE_test_rules_AUC
+        
+        SRE_train_AUC <- cbind(SRE_train_rules_AUC, fitted_smooths_train)
+        SRE_test_AUC <- cbind(SRE_test_rules_AUC, fitted_smooths_test)
+        SRE_train_Brier <- cbind(SRE_train_rules_AUC, fitted_smooths_train)
+        SRE_test_Brier <- cbind(SRE_test_rules_AUC, fitted_smooths_test)
+        SRE_train_PG <- cbind(SRE_train_rules_AUC, fitted_smooths_train)
+        SRE_test_PG <- cbind(SRE_test_rules_AUC, fitted_smooths_test)
+        SRE_train_EMP <- cbind(SRE_train_rules_AUC, fitted_smooths_train)
+        SRE_test_EMP <- cbind(SRE_test_rules_AUC, fitted_smooths_test)
+      } else {
+        SRE_train_AUC <- cbind(inner_train_bake, fitted_smooths_train)
+        SRE_test_AUC <- cbind(inner_test_bake, fitted_smooths_test)
+        SRE_train_Brier <- cbind(inner_train_bake, fitted_smooths_train)
+        SRE_test_Brier <- cbind(inner_test_bake, fitted_smooths_test)
+        SRE_train_PG <- cbind(inner_train_bake, fitted_smooths_train)
+        SRE_test_PG <- cbind(inner_test_bake, fitted_smooths_test)
+        SRE_train_EMP <- cbind(inner_train_bake, fitted_smooths_train)
+        SRE_test_EMP <- cbind(inner_test_bake, fitted_smooths_test)
+      }
     }
-    if(!is.null(RE_model_inner_Brier$finalModel$rules)) {
-      SRE_train_rules_Brier <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model_inner_Brier$finalModel$rules$description))$rules)
-      SRE_test_rules_Brier<- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model_inner_Brier$finalModel$rules$description))$rules)
-      
-      SRE_train_Brier <- cbind(SRE_train_rules_Brier, fitted_smooths_train)
-      SRE_test_Brier <- cbind(SRE_test_rules_Brier, fitted_smooths_test)
-    } else {
-      SRE_train_Brier <- cbind(inner_train_bake, fitted_smooths_train)
-      SRE_test_Brier <- cbind(inner_test_bake, fitted_smooths_test)
-    }
-    if(!is.null(RE_model_inner_PG$finalModel$rules)) {
-      SRE_train_rules_PG <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model_inner_PG$finalModel$rules$description))$rules)
-      SRE_test_rules_PG <- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model_inner_PG$finalModel$rules$description))$rules)
-      
-      SRE_train_PG <- cbind(SRE_train_rules_PG, fitted_smooths_train)
-      SRE_test_PG <- cbind(SRE_test_rules_PG, fitted_smooths_test)
-    } else {
-      SRE_train_PG <- cbind(inner_train_bake, fitted_smooths_train)
-      SRE_test_PG <- cbind(inner_test_bake, fitted_smooths_test)
-    }
-    if(!is.null(RE_model_inner_EMP$finalModel$rules)) {
-      SRE_train_rules_EMP <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model_inner_EMP$finalModel$rules$description))$rules)
-      SRE_test_rules_EMP <- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model_inner_EMP$finalModel$rules$description))$rules)
-      
-      SRE_train_EMP <- cbind(SRE_train_rules_EMP, fitted_smooths_train)
-      SRE_test_EMP <- cbind(SRE_test_rules_EMP, fitted_smooths_test)
-    } else {
-      SRE_train_EMP <- cbind(inner_train_bake, fitted_smooths_train)
-      SRE_test_EMP <- cbind(inner_test_bake, fitted_smooths_test)
+    else {
+      if(!is.null(RE_model_inner_AUC$finalModel$rules)) {
+        SRE_train_rules_AUC <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model_inner_AUC$finalModel$rules$description))$rules)
+        SRE_test_rules_AUC <- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model_inner_AUC$finalModel$rules$description))$rules)
+        
+        SRE_train_AUC <- cbind(SRE_train_rules_AUC, fitted_smooths_train)
+        SRE_test_AUC <- cbind(SRE_test_rules_AUC, fitted_smooths_test)
+      } else {
+        SRE_train_AUC <- cbind(inner_train_bake, fitted_smooths_train)
+        SRE_test_AUC <- cbind(inner_test_bake, fitted_smooths_test)
+      }
+      if(!is.null(RE_model_inner_Brier$finalModel$rules)) {
+        SRE_train_rules_Brier <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model_inner_Brier$finalModel$rules$description))$rules)
+        SRE_test_rules_Brier<- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model_inner_Brier$finalModel$rules$description))$rules)
+        
+        SRE_train_Brier <- cbind(SRE_train_rules_Brier, fitted_smooths_train)
+        SRE_test_Brier <- cbind(SRE_test_rules_Brier, fitted_smooths_test)
+      } else {
+        SRE_train_Brier <- cbind(inner_train_bake, fitted_smooths_train)
+        SRE_test_Brier <- cbind(inner_test_bake, fitted_smooths_test)
+      }
+      if(!is.null(RE_model_inner_PG$finalModel$rules)) {
+        SRE_train_rules_PG <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model_inner_PG$finalModel$rules$description))$rules)
+        SRE_test_rules_PG <- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model_inner_PG$finalModel$rules$description))$rules)
+        
+        SRE_train_PG <- cbind(SRE_train_rules_PG, fitted_smooths_train)
+        SRE_test_PG <- cbind(SRE_test_rules_PG, fitted_smooths_test)
+      } else {
+        SRE_train_PG <- cbind(inner_train_bake, fitted_smooths_train)
+        SRE_test_PG <- cbind(inner_test_bake, fitted_smooths_test)
+      }
+      if(!is.null(RE_model_inner_EMP$finalModel$rules)) {
+        SRE_train_rules_EMP <- fit_rules(inner_train_bake, drop_na(tibble(rules = RE_model_inner_EMP$finalModel$rules$description))$rules)
+        SRE_test_rules_EMP <- fit_rules(inner_test_bake, drop_na(tibble(rules = RE_model_inner_EMP$finalModel$rules$description))$rules)
+        
+        SRE_train_EMP <- cbind(SRE_train_rules_EMP, fitted_smooths_train)
+        SRE_test_EMP <- cbind(SRE_test_rules_EMP, fitted_smooths_test)
+      } else {
+        SRE_train_EMP <- cbind(inner_train_bake, fitted_smooths_train)
+        SRE_test_EMP <- cbind(inner_test_bake, fitted_smooths_test)
+      }
     }
     
     ####### 
@@ -367,7 +411,6 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
       add_recipe(SRE_recipe_EMP) %>%
       add_model(ridge_model)
     
-    tic()
     SRE_ridge_tuned_AUC <- tune::tune_grid(
       object = SRE_ridge_wf_AUC,
       resamples = SRE_split_AUC,
@@ -392,7 +435,7 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
       grid = hyperparameters_SRE_tidy, 
       metrics = metrics,
       control = tune::control_grid(verbose = TRUE, save_pred = TRUE, parallel_over = "everything"))
-    toc()
+
     #for auc, brier
     metrics_SRE_ridge_AUC <- SRE_ridge_tuned_AUC$.metrics[[1]]
     metrics_SRE_ridge_Brier <- SRE_ridge_tuned_Brier$.metrics[[1]]
@@ -640,36 +683,78 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
   
   ####### 
   # Fit rules from RE_models, seperate for AUC, Brier, PG
-  if(!is.null(RE_model_AUC$finalModel$rules)) {
-    SRE_train_rules_AUC <- fit_rules(train_bake, drop_na(tibble(rules = RE_model_AUC$finalModel$rules$description))$rules)
-    SRE_test_rules_AUC <- fit_rules(test_bake, drop_na(tibble(rules = RE_model_AUC$finalModel$rules$description))$rules)
+  if(identical(tree_algorithm, "PLTR")) {
+    cat("training RE")
+    features <- setdiff(names(train_bake), "label")  # Exclude the label column
+    combinations <- combn(features, 2)  # Generate all combinations of 2 features
+    rules = c()
+    for (j in 1:ncol(combinations)) {
+      feature_pair <- combinations[, j]
+      formula <- as.formula(paste("label ~", paste(feature_pair, collapse = " + ")))
+      tree <- as.party(rpart::rpart(formula, data = train_bake, maxdepth = 2))
+      extracted_rules <- partykit:::.list.rules.party(tree)
+      if(extracted_rules[1]!= "") {rules <- c(rules, extracted_rules)}
+    }   
+    if(!is_empty(rules)) {
+      SRE_train_rules_AUC <- fit_rules(train_bake, unique(rules))
+      SRE_test_rules_AUC <- fit_rules(test_bake, unique(rules))
+      SRE_train_rules_Brier <- SRE_train_rules_AUC
+      SRE_test_rules_Brier <- SRE_test_rules_AUC
+      SRE_train_rules_PG <- SRE_train_rules_AUC
+      SRE_test_rules_PG <- SRE_test_rules_AUC
+      SRE_train_rules_EMP <- SRE_train_rules_AUC
+      SRE_test_rules_EMP <- SRE_test_rules_AUC
+      
+      SRE_train_AUC <- cbind(SRE_train_rules_AUC, fitted_smooths_train)
+      SRE_test_AUC <- cbind(SRE_test_rules_AUC, fitted_smooths_test)
+      SRE_train_Brier <- cbind(SRE_train_rules_AUC, fitted_smooths_train)
+      SRE_test_Brier <- cbind(SRE_test_rules_AUC, fitted_smooths_test)
+      SRE_train_PG <- cbind(SRE_train_rules_AUC, fitted_smooths_train)
+      SRE_test_PG <- cbind(SRE_test_rules_AUC, fitted_smooths_test)
+      SRE_train_EMP <- cbind(SRE_train_rules_AUC, fitted_smooths_train)
+      SRE_test_EMP <- cbind(SRE_test_rules_AUC, fitted_smooths_test)
+    } else {
+      SRE_train_AUC <- cbind(train_bake, fitted_smooths_train)
+      SRE_test_AUC <- cbind(test_bake, fitted_smooths_test)
+      SRE_train_Brier <- cbind(train_bake, fitted_smooths_train)
+      SRE_test_Brier <- cbind(test_bake, fitted_smooths_test)
+      SRE_train_PG <- cbind(train_bake, fitted_smooths_train)
+      SRE_test_PG <- cbind(test_bake, fitted_smooths_test)
+      SRE_train_EMP <- cbind(train_bake, fitted_smooths_train)
+      SRE_test_EMP <- cbind(test_bake, fitted_smooths_test)
+    }
   } else {
-    SRE_train_rules_AUC <- train_bake
-    SRE_test_rules_AUC <- test_bake
-  }
-  
-  if(!is.null(RE_model_Brier$finalModel$rules)) {
-    SRE_train_rules_Brier <- fit_rules(train_bake, drop_na(tibble(rules = RE_model_Brier$finalModel$rules$description))$rules)
-    SRE_test_rules_Brier <- fit_rules(test_bake, drop_na(tibble(rules = RE_model_Brier$finalModel$rules$description))$rules)
-  } else {
-    SRE_train_rules_Brier <- train_bake
-    SRE_test_rules_Brier <- test_bake
-  }
-  
-  if(!is.null(RE_model_PG$finalModel$rules)) {
-    SRE_train_rules_PG <- fit_rules(train_bake, drop_na(tibble(rules = RE_model_PG$finalModel$rules$description))$rules)
-    SRE_test_rules_PG <- fit_rules(test_bake, drop_na(tibble(rules = RE_model_PG$finalModel$rules$description))$rules)
-  } else {
-    SRE_train_rules_PG <- train_bake
-    SRE_test_rules_PG <- test_bake
-  }
-  
-  if(!is.null(RE_model_EMP$finalModel$rules)) {
-    SRE_train_rules_EMP <- fit_rules(train_bake, drop_na(tibble(rules = RE_model_EMP$finalModel$rules$description))$rules)
-    SRE_test_rules_EMP <- fit_rules(test_bake, drop_na(tibble(rules = RE_model_EMP$finalModel$rules$description))$rules)
-  } else {
-    SRE_train_rules_EMP <- train_bake
-    SRE_test_rules_EMP <- test_bake
+    if(!is.null(RE_model_AUC$finalModel$rules)) {
+      SRE_train_rules_AUC <- fit_rules(train_bake, drop_na(tibble(rules = RE_model_AUC$finalModel$rules$description))$rules)
+      SRE_test_rules_AUC <- fit_rules(test_bake, drop_na(tibble(rules = RE_model_AUC$finalModel$rules$description))$rules)
+    } else {
+      SRE_train_rules_AUC <- train_bake
+      SRE_test_rules_AUC <- test_bake
+    }
+    
+    if(!is.null(RE_model_Brier$finalModel$rules)) {
+      SRE_train_rules_Brier <- fit_rules(train_bake, drop_na(tibble(rules = RE_model_Brier$finalModel$rules$description))$rules)
+      SRE_test_rules_Brier <- fit_rules(test_bake, drop_na(tibble(rules = RE_model_Brier$finalModel$rules$description))$rules)
+    } else {
+      SRE_train_rules_Brier <- train_bake
+      SRE_test_rules_Brier <- test_bake
+    }
+    
+    if(!is.null(RE_model_PG$finalModel$rules)) {
+      SRE_train_rules_PG <- fit_rules(train_bake, drop_na(tibble(rules = RE_model_PG$finalModel$rules$description))$rules)
+      SRE_test_rules_PG <- fit_rules(test_bake, drop_na(tibble(rules = RE_model_PG$finalModel$rules$description))$rules)
+    } else {
+      SRE_train_rules_PG <- train_bake
+      SRE_test_rules_PG <- test_bake
+    }
+    
+    if(!is.null(RE_model_EMP$finalModel$rules)) {
+      SRE_train_rules_EMP <- fit_rules(train_bake, drop_na(tibble(rules = RE_model_EMP$finalModel$rules$description))$rules)
+      SRE_test_rules_EMP <- fit_rules(test_bake, drop_na(tibble(rules = RE_model_EMP$finalModel$rules$description))$rules)
+    } else {
+      SRE_train_rules_EMP <- train_bake
+      SRE_test_rules_EMP <- test_bake
+    }
   }
   
   

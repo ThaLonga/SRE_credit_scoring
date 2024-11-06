@@ -1,8 +1,8 @@
 load_data <- function () {
-  for(dataset in c("german", "australian", "HMEQ", "thomas", "LC", "TC", "kaggle")) {
+  for(dataset in c("german", "australian", "HMEQ", "thomas", "LC", "TC", "kaggle", "PAKDD")) {
     load(paste("data/GOLD/",dataset,".Rda", sep=""))
   }
-  return(list(german, australian, HMEQ, thomas, LC, TC, kaggle))
+  return(list(german, australian, HMEQ, thomas, LC, TC, kaggle, PAKDD))
 }
 
 load_results <- function (metric, dataset) {

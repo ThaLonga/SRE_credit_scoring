@@ -1,6 +1,6 @@
 # main
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
-p_load(glmnet, glmnetUtils, mgcv, MASS, tidyverse, xgboost, DiagrammeR, stringr, tictoc, doParallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai, rlang, yardstick, bonsai, lightgbm, ranger, tune, DescTools, rules, discrim, EMP, party)
+p_load(glmnet, glmnetUtils, mgcv, MASS, tidyverse, xgboost, DiagrammeR, stringr, tictoc, doParallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai, rlang, yardstick, bonsai, lightgbm, ranger, tune, DescTools, rules, discrim, EMP, party, future)
 
 #conventions:
 # target variable = label
@@ -17,15 +17,19 @@ source("./src/hyperparameters.R")
 source("./src/BigSummary.R")
 source("./src/data_loader.R")
 datasets <- load_data()
-cl <- makeCluster(detectCores()-1)
-cl_small <- makeCluster(4) #for bigger datasets to prevent OOM
+
+#parallel
+cl <- makeCluster(detectCores())
 registerDoParallel(cl)
+plan(multisession, workers = availableCores())
+options(future.globals.maxSize = 1000 * 1024^2)
 
 #(AUCROC, Brier, partialGini)
 metric = "AUCROC"
-nr_repeats = 5
+nr_repeats = 3
 outerfolds = 2
-dataset_vector = c("GC", "AC", "HMEQ", "TH02", "LC", "TC", "GMSC")
+fraction = 1.0 #subsampling fraction
+dataset_vector = c("GC", "AC", "HMEQ", "TH02", "LC", "TC", "GMSC", "PAKDD")
 
 metrics = metric_set(roc_auc, brier_class)
 
@@ -41,7 +45,11 @@ predictions <- list()
 
 dataset_counter = 1
 
-for(dataset in datasets[1]) {
+for(dataset in datasets) {
+  
+  #subsampling
+  dataset <- dataset[sample(nrow(dataset), round(fraction*nrow(dataset))), ]
+  
   
   AUC_results <- metric_results
   Brier_results <- metric_results
@@ -144,6 +152,7 @@ for(dataset in datasets[1]) {
     # LRR
     #####
     print("LRR")
+    
     tic()
     LRR_model <- 
       parsnip::logistic_reg(
@@ -899,6 +908,7 @@ for(dataset in datasets[1]) {
                      RE_model_AUC = RE_model_bag,
                      RE_model_Brier = RE_model_bag,
                      RE_model_PG = RE_model_bag,
+                     RE_model_EMP = RE_model_bag,
                      GAM_recipe = GAM_recipe,
                      metrics = metrics,
                      train_bake = train_bake,
@@ -941,6 +951,7 @@ for(dataset in datasets[1]) {
                      RE_model_AUC = RE_model_boosting,
                      RE_model_Brier = RE_model_boosting_Brier,
                      RE_model_PG = RE_model_boosting_PG,
+                     RE_model_EMP = RE_model_boosting_EMP,
                      GAM_recipe = GAM_recipe,
                      metrics = metrics,
                      train_bake = train_bake,
@@ -974,6 +985,48 @@ for(dataset in datasets[1]) {
     emp <- SRE_boosting$best_EMP %>%
       collect_emp()
     EMP_results[nrow(EMP_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE_boosting", emp)
+    
+    print("SRE: PLTR")
+    
+    SRE_PLTR <- cv.SRE(inner_split,
+                           tree_algorithm = "PLTR",
+                           RE_model_AUC = NULL,
+                           RE_model_Brier = NULL,
+                           RE_model_PG = NULL,
+                           RE_model_EMP = NULL,
+                           GAM_recipe = GAM_recipe,
+                           metrics = metrics,
+                           train_bake = train_bake,
+                           test_bake = test_bake
+    )
+    
+    #Save predictions
+    SRE_PLTR_predictions_AUC <- SRE_PLTR$best_AUC$.predictions[[1]]$.pred_X1
+    SRE_PLTR_predictions_Brier <- SRE_PLTR$best_Brier$.predictions[[1]]$.pred_X1
+    SRE_PLTR_predictions_PG <- SRE_PLTR$best_PG$.predictions[[1]]$.pred_X1
+    SRE_PLTR_predictions_EMP <- SRE_PLTR$best_EMP$.predictions[[1]]$.pred_X1
+    
+    ######
+    # Extract metrics
+    auc <- SRE_PLTR$best_AUC %>%
+      collect_metrics() %>%
+      filter(.metric == "roc_auc") %>%
+      pull(.estimate)
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE_PLTR", auc)
+    
+    brier <- SRE_PLTR$best_Brier %>%
+      collect_metrics() %>%
+      filter(.metric == "brier_class") %>%
+      pull(.estimate)
+    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE_PLTR", brier)
+    
+    pg <- SRE_PLTR$best_PG %>%
+      collect_pg()
+    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE_PLTR", pg)
+    
+    emp <- SRE_PLTR$best_EMP %>%
+      collect_emp()
+    EMP_results[nrow(EMP_results) + 1,] = list(dataset_vector[dataset_counter], i, "SRE_PLTR", emp)
     
     ######
     # PLTR
@@ -1011,10 +1064,10 @@ for(dataset in datasets[1]) {
     PLTR_predictions_EMP <- PLTR$best_EMP$.predictions[[1]]$.pred_X1
     
     
-    predictions_AUC = cbind(LRR_predictions_AUC, GAM_predictions, LDA_predictions, CTREE_predictions_AUC, RF_predictions_AUC, XGB_predictions_AUC, LGBM_predictions_AUC, RE_RF_predictions_AUC, RE_boosting_predictions_AUC, RE_bag_predictions, PLTR_predictions_AUC, SRE_RF_predictions_AUC, SRE_bag_predictions_AUC, SRE_boosting_predictions_AUC)
-    predictions_Brier = cbind(LRR_predictions_Brier, GAM_predictions, LDA_predictions, CTREE_predictions_Brier, RF_predictions_Brier, XGB_predictions_Brier, LGBM_predictions_Brier, RE_RF_predictions_Brier, RE_boosting_predictions_Brier, RE_bag_predictions, PLTR_predictions_Brier, SRE_RF_predictions_Brier, SRE_bag_predictions_Brier, SRE_boosting_predictions_Brier)
-    predictions_PG = cbind(LRR_predictions_PG, GAM_predictions, LDA_predictions, CTREE_predictions_PG, RF_predictions_PG, XGB_predictions_PG, LGBM_predictions_PG, RE_RF_predictions_PG, RE_boosting_predictions_PG, RE_bag_predictions, PLTR_predictions_PG, SRE_RF_predictions_PG, SRE_bag_predictions_PG, SRE_boosting_predictions_PG)
-    predictions_EMP = cbind(LRR_predictions_EMP, GAM_predictions, LDA_predictions, CTREE_predictions_EMP, RF_predictions_EMP, XGB_predictions_EMP, LGBM_predictions_EMP, RE_RF_predictions_EMP, RE_boosting_predictions_EMP, RE_bag_predictions, PLTR_predictions_EMP, SRE_RF_predictions_EMP, SRE_bag_predictions_EMP, SRE_boosting_predictions_EMP)
+    predictions_AUC = cbind(LRR_predictions_AUC, GAM_predictions, LDA_predictions, CTREE_predictions_AUC, RF_predictions_AUC, XGB_predictions_AUC, LGBM_predictions_AUC, RE_RF_predictions_AUC, RE_boosting_predictions_AUC, RE_bag_predictions, PLTR_predictions_AUC, SRE_RF_predictions_AUC, SRE_bag_predictions_AUC, SRE_boosting_predictions_AUC, SRE_PLTR_predictions_AUC)
+    predictions_Brier = cbind(LRR_predictions_Brier, GAM_predictions, LDA_predictions, CTREE_predictions_Brier, RF_predictions_Brier, XGB_predictions_Brier, LGBM_predictions_Brier, RE_RF_predictions_Brier, RE_boosting_predictions_Brier, RE_bag_predictions, PLTR_predictions_Brier, SRE_RF_predictions_Brier, SRE_bag_predictions_Brier, SRE_PLTR_predictions_Brier)
+    predictions_PG = cbind(LRR_predictions_PG, GAM_predictions, LDA_predictions, CTREE_predictions_PG, RF_predictions_PG, XGB_predictions_PG, LGBM_predictions_PG, RE_RF_predictions_PG, RE_boosting_predictions_PG, RE_bag_predictions, PLTR_predictions_PG, SRE_RF_predictions_PG, SRE_bag_predictions_PG, SRE_PLTR_predictions_PG)
+    predictions_EMP = cbind(LRR_predictions_EMP, GAM_predictions, LDA_predictions, CTREE_predictions_EMP, RF_predictions_EMP, XGB_predictions_EMP, LGBM_predictions_EMP, RE_RF_predictions_EMP, RE_boosting_predictions_EMP, RE_bag_predictions, PLTR_predictions_EMP, SRE_RF_predictions_EMP, SRE_bag_predictions_EMP, SRE_PLTR_predictions_EMP)
     write.csv(predictions_AUC, file = paste("./predictions/",dataset_vector[dataset_counter],"_predictions_repeat_", i, "_AUC.csv", sep = ""))
     write.csv(predictions_Brier, file = paste("./predictions/",dataset_vector[dataset_counter],"_predictions_repeat_", i, "_Brier.csv", sep = ""))
     write.csv(predictions_PG, file = paste("./predictions/",dataset_vector[dataset_counter],"_predictions_repeat_", i, "_PG.csv", sep = ""))

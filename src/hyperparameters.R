@@ -28,7 +28,7 @@ hyperparameters_RF_tidy <- expand.grid(list(
 hyperparameters_XGB_tidy <- crossing(
   trees = c(100), #L
   learn_rate = c(0.3, 0.4, 0.5), #B
-  tree_depth = c(10), #default
+  tree_depth = c(5), #default
   sample_size = c(0.5, 0.75, 1),
   loss_reduction = c(0.01, 0.1, 1, 10)
 )
@@ -37,13 +37,13 @@ hyperparameters_XGB_tidy <- crossing(
 hyperparameters_LGBM_tidy <- crossing(
   trees = c(100), #L
   learn_rate = c(0.3, 0.4, 0.5), #B
-  tree_depth = c(10),
+  tree_depth = c(5),
   sample_size = c(0.5, 0.75, 1),
   loss_reduction = c(0.01, 0.1, 1, 10)
 )
 
 preGrid_boosting <- getModelInfo("pre")[[1]]$grid( 
-  maxdepth = c(10),
+  maxdepth = c(5),
   learnrate = c(.3, .4, .5),
   penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
   sampfrac = 1,
@@ -52,7 +52,7 @@ preGrid_boosting <- getModelInfo("pre")[[1]]$grid(
 )
 
 preGrid_RF <- getModelInfo("pre")[[1]]$grid( 
-  maxdepth = c(10),
+  maxdepth = c(5),
   penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
   sampfrac = 1,
   #learnrate = 0,
@@ -61,7 +61,7 @@ preGrid_RF <- getModelInfo("pre")[[1]]$grid(
 )
 
 preGrid_bag <- getModelInfo("pre")[[1]]$grid( 
-  maxdepth = c(10),
+  maxdepth = c(5),
   learnrate = 0,
   sampfrac = 1,
   penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
@@ -81,7 +81,7 @@ hyperparameters_RF_DB <- expand.grid(list(
 ))
 
 preGrid_DB <- getModelInfo("pre")[[1]]$grid( 
-  maxdepth = 10,
+  maxdepth = 5,
   learnrate = c(.3, .5),
   penalty.par.val = c("lambda.1se"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
   sampfrac = 1,
