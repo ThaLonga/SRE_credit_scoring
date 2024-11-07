@@ -330,7 +330,7 @@ fit_rules_SGL <- function(dataframe, rules) {
     return(vars)
   }
   if(!is.null(rules)) {
-    rule_vars <- concatenate_list_of_vectors(lapply(RE_model$finalModel$rules$description, extract_variable_names))
+    rule_vars <- concatenate_list_of_vectors(lapply(rules, extract_variable_names))
     # Split the rule into individual conditions
     conditions <- strsplit(rules, " & ")
     
@@ -385,6 +385,7 @@ fisher_score_selection <- function(data) {
 group_terms_by_variables <- function(terms, original_vars) {
   # Initialize a list to hold the groups
   grouped_terms <- list()
+  groups <- list()
   
   # Function to find the original variables in a term
   find_variables <- function(term, original_vars) {
