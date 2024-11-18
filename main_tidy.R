@@ -22,13 +22,13 @@ datasets <- load_data()
 cl <- makeCluster(detectCores())
 registerDoParallel(cl)
 plan(multisession, workers = availableCores())
-options(future.globals.maxSize = 1000 * 1024^2)
+options(future.globals.maxSize = 1000 * 10240^2)
 
 #(AUCROC, Brier, partialGini)
 metric = "AUCROC"
 nr_repeats = 3
 outerfolds = 2
-fraction = 1.0 #subsampling fraction
+fraction = 1 #subsampling fraction
 dataset_vector = c("GC", "AC", "HMEQ", "TH02", "LC", "TC", "GMSC", "PAKDD")
 
 metrics = metric_set(roc_auc, brier_class)
@@ -43,9 +43,9 @@ metric_results <- data.frame(
 )
 predictions <- list()
 
-dataset_counter = 1
+dataset_counter = 2
 
-for(dataset in datasets) {
+for(dataset in datasets[2]) {
   
   #subsampling
   dataset <- dataset[sample(nrow(dataset), round(fraction*nrow(dataset))), ]
@@ -134,6 +134,20 @@ for(dataset in datasets) {
     set.seed(innerseed)
     inner_split <- train %>% validation_split(prop=3/4)
     inner_ids_in <- inner_split$splits[[1]]$in_id
+    
+    inner_train_bake <- XGB_recipe%>%prep(analysis(inner_split$splits[[1]]))%>%bake(analysis(inner_split$splits[[1]]))
+    inner_test_bake <- XGB_recipe%>%prep(analysis(inner_split$splits[[1]]))%>%bake(assessment(inner_split$splits[[1]]))
+    
+    RE_recipe_inner <- recipe(label ~., data = inner_train_bake) %>%
+      step_impute_mean(all_numeric_predictors()) %>%
+      step_impute_mode(all_string_predictors()) %>%
+      step_impute_mode(all_factor_predictors()) %>%
+      step_novel(all_nominal_predictors()) %>%
+      step_dummy(all_string_predictors()) %>%
+      step_dummy(all_factor_predictors()) %>%
+      step_zv(all_predictors())
+    
+    
     ctrl <- trainControl(method="LGOCV",
                          number=1, 
                          index = list(inner_ids_in), 
@@ -717,18 +731,108 @@ for(dataset in datasets) {
     print("RE: RF")
     
     set.seed(innerseed)
+    tic()
     RE_model_RF <- train(XGB_recipe, data = train, method = "pre",
                       ntrees = 100, #tree.unbiased = FALSE, 
                       family = "binomial", trControl = ctrl,
                       tuneGrid = preGrid_RF, ad.alpha = 0, singleconditions = FALSE,
                       winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
                       verbose = TRUE,
-                      metric = "AUCROC", allowParallel = TRUE,
-                      par.init=TRUE,
-                      par.final=TRUE)    
+                      metric = "AUCROC"#, allowParallel = TRUE
+                      #par.init=TRUE,
+                      #par.final=TRUE
+                      )
+    toc()
+    
+    ######
+    # BETTER?
+    pre_rf_results <- list()
+    tic()
+    for(config in 1:nrow(preGrid_RF)) {
+      inner_RE_model_RF <- pre(formula = label~.,
+        data = RE_recipe_inner%>%prep(inner_train_bake)%>%bake(inner_train_bake),
+        family = "binomial",
+        ad.alpha = 0, #ridge estimates for adalasso
+        winsfrac = 0.05,
+        normalize = TRUE,
+        removecomplements = TRUE,
+        removeduplicates = TRUE,
+        par.init = TRUE,
+        par.final = TRUE,
+        verbose = TRUE,
+        tree.unbiased = FALSE,
+        sampfrac = preGrid_RF$sampfrac[config],
+        maxdepth = preGrid_RF$maxdepth[config],
+        learnrate = preGrid_RF$learnrate[config],
+        mtry = preGrid_RF$mtry[config],
+        use.grad = preGrid_RF$use.grad[config]
+        #ad.penalty = preGrid_RF$penalty.par.val[config]
+    )
+    
+    pre_rf_results[[config]] <- predict(inner_RE_model_RF, RE_recipe_inner%>%prep(inner_train_bake)%>%bake(inner_test_bake), type = 'response')
+    }
+    toc()
+    
+    inner_re_rf_AUC <- inner_re_rf_Brier <- inner_re_rf_PG <- inner_re_rf_EMP <- list()
+    for(results_count in 1:length(pre_rf_results)) {
+      inner_re_rf_AUC[results_count] <- roc(inner_test_bake$label, pre_rf_results[[results_count]])$auc
+      inner_re_rf_Brier[results_count] <- brier_score(truth = inner_test_bake$label, preds = pre_rf_results[[results_count]])
+      inner_re_rf_PG[results_count] <- partialGini(pre_rf_results[[results_count]], inner_test_bake$label)
+      inner_re_rf_EMP[results_count] <- empCreditScoring(pre_rf_results[[results_count]], inner_test_bake$label)$EMPC
+    }
+    
+    # Identify indices with max values for each metric
+    max_indices <- list(
+      AUC = which.max(inner_re_rf_AUC),
+      Brier = which.min(inner_re_rf_Brier),
+      PG = which.max(inner_re_rf_PG),
+      EMP = which.max(inner_re_rf_EMP)
+    )
+    
+    # Identify unique configurations to avoid redundant training
+    unique_configs <- unique(unlist(max_indices))
+    config_map <- data.frame(
+      metric = names(max_indices),
+      index = unlist(max_indices)
+    )
+    
+    # Initialize a list to store models for unique configurations
+    trained_models <- list()
+    
+    # Train models for each unique configuration
+    for (idx in unique_configs) {
+      trained_models[[as.character(idx)]] <- pre(
+        formula = label~.,
+        data = XGB_recipe %>% prep(train) %>% bake(train),
+        family = "binomial",
+        ad.alpha = 0,
+        winsfrac = 0.05,
+        normalize = TRUE,
+        removecomplements = TRUE,
+        removeduplicates = TRUE,
+        par.init = TRUE,
+        par.final = TRUE,
+        verbose = TRUE,
+        tree.unbiased = FALSE,
+        sampfrac = preGrid_RF$sampfrac[idx],
+        maxdepth = preGrid_RF$maxdepth[idx],
+        learnrate = preGrid_RF$learnrate[idx],
+        mtry = preGrid_RF$mtry[idx],
+        use.grad = preGrid_RF$use.grad[idx]
+      )
+    }
+    
+    # Assign trained models to variables based on the config map
+    RE_model_RF_AUC <- trained_models[[as.character(max_indices$AUC)]]
+    RE_model_RF_Brier <- trained_models[[as.character(max_indices$Brier)]]
+    RE_model_RF_PG <- trained_models[[as.character(max_indices$PG)]]
+    RE_model_RF_EMP <- trained_models[[as.character(max_indices$EMP)]]
+
+    
+    ######
     
     #AUC
-    RE_preds_RF <- predict(RE_model_RF, test, type = 'probs')
+    RE_preds_RF <- predict(RE_model_RF_AUC, test, type = 'probs')
     RE_preds_RF$label <- test$label
     
     #Save predictions
@@ -870,7 +974,8 @@ for(dataset in datasets) {
                      GAM_recipe = GAM_recipe,
                      metrics = metrics,
                      train_bake = train_bake,
-                     test_bake = test_bake
+                     test_bake = test_bake,
+                     regularization = NULL
                      )
     
     #Save predictions
@@ -912,7 +1017,8 @@ for(dataset in datasets) {
                      GAM_recipe = GAM_recipe,
                      metrics = metrics,
                      train_bake = train_bake,
-                     test_bake = test_bake
+                     test_bake = test_bake,
+                     regularization = NULL
     )
     
     #Save predictions
@@ -955,7 +1061,8 @@ for(dataset in datasets) {
                      GAM_recipe = GAM_recipe,
                      metrics = metrics,
                      train_bake = train_bake,
-                     test_bake = test_bake
+                     test_bake = test_bake,
+                     regularization = NULL
     )
     
     #Save predictions
@@ -997,7 +1104,8 @@ for(dataset in datasets) {
                            GAM_recipe = GAM_recipe,
                            metrics = metrics,
                            train_bake = train_bake,
-                           test_bake = test_bake
+                           test_bake = test_bake,
+                           regularization = NULL
     )
     
     #Save predictions
