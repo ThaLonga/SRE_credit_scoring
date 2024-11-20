@@ -2,6 +2,13 @@ if (!require("pacman")) install.packages("pacman") ; require("pacman")
 p_load(glmnet, tidyverse, doParallel, parsnip, recipes, rsample, workflows, tune)
 source("./src/hyperparameters.R")
 
+# Function to process a single combination of features
+process_combination <- function(feature_pair) {
+  formula <- as.formula(paste("label ~", paste(feature_pair, collapse = " + ")))
+  tree <- as.party(rpart::rpart(formula, data = inner_train_bake, maxdepth = 2))
+  extracted_rules <- partykit:::.list.rules.party(tree)
+  if (extracted_rules[1] != "") return(extracted_rules) else return(NULL)
+}
 
 cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
   stopifnot(is(inner_split, "vfold_cv")||is(inner_split, "rset"))
@@ -20,7 +27,6 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
   full_metrics_PG <- list()
   full_metrics_EMP <- list()
   
-  
   for(k in 1:nrow(inner_split)) {
     cat("PLTR inner fold", k, "/ ", nrow(inner_split), "\n")
     ####### 
@@ -35,6 +41,8 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
     features <- setdiff(names(inner_train_bake), "label")  # Exclude the label column
     combinations <- combn(features, 2)  # Generate all combinations of 2 features
     rules = c()
+    
+    tic()
     for (j in 1:ncol(combinations)) {
       feature_pair <- combinations[, j]
       formula <- as.formula(paste("label ~", paste(feature_pair, collapse = " + ")))
@@ -42,9 +50,23 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
       extracted_rules <- partykit:::.list.rules.party(tree)
       if(extracted_rules[1]!= "") {rules <- c(rules, extracted_rules)}
     }
+    toc()
+    tic()
+    rules <- future.apply::future_lapply(
+      1:ncol(combinations), 
+      function(j) process_combination(combinations[, j])
+    )
+    toc()
+    rules <- unlist(rules)
+    rules <- rules[rules != ""]
+    
+    
     if(!is_empty(rules)) {
       fitted_rules_inner_train <- fit_rules(inner_train_bake, unique(rules))
       fitted_rules_inner_test <- fit_rules(inner_test_bake, unique(rules))
+    } else {
+      fitted_rules_inner_train <- inner_train_bake
+      fitted_rules_inner_test <- inner_test_bake
     }
     indices <- list(
       list(analysis = 1:nrow(fitted_rules_inner_train), assessment = (nrow(fitted_rules_inner_train)+1):(nrow(fitted_rules_inner_train)+nrow(fitted_rules_inner_test)))
@@ -310,21 +332,23 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
   lambda_1se_emp <- best_lambda_emp + lambda_sd_emp
   
   
-  
-  
   features <- setdiff(names(train_bake), "label")  # Exclude the label column
   combinations <- combn(features, 2)  # Generate all combinations of 2 features
   rules = c()
-  for (j in 1:ncol(combinations)) {
-    feature_pair <- combinations[, j]
-    formula <- as.formula(paste("label ~", paste(feature_pair, collapse = " + ")))
-    tree <- as.party(rpart::rpart(formula, data = train_bake, maxdepth = 2))
-    extracted_rules <- partykit:::.list.rules.party(tree)
-    if(extracted_rules[1]!= "") {rules <- c(rules, extracted_rules)}
-  }
+  
+  rules <- future.apply::future_lapply(
+    1:ncol(combinations), 
+    function(j) process_combination(combinations[, j])
+  )
+  rules <- unlist(rules)
+  rules <- rules[rules != ""]
+  
   if(!is_empty(rules)) {
     PLTR_train <- fit_rules(train_bake, unique(rules))
     PLTR_test <- fit_rules(test_bake, unique(rules))
+  } else {
+    PLTR_train <- train_bake
+    PLTR_test <- test_bake
   }
   
   #######
@@ -336,7 +360,6 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
   splits_PLTR <- lapply(indices, make_splits, data = rbind(PLTR_train, PLTR_test))
   
   PLTR_split <- manual_rset(splits_PLTR, c("Split SRE"))
-  
   
   PLTR_recipe <- recipe(label~., data = training(PLTR_split$splits[[1]])) %>%
     step_mutate(across(where(is.logical), as.integer)) %>%

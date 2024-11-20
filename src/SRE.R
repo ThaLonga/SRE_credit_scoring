@@ -1,8 +1,9 @@
 if (!require("pacman")) install.packages("pacman") ; require("pacman")
 p_load(glmnet, glmnetUtils, mgcv, MASS, tidyverse, xgboost, DiagrammeR, stringr, tictoc, doParallel, pROC, earth, Matrix, pre, caret, parsnip, ggplot2, recipes, rsample, workflows, healthyR.ai, rlang, yardstick, bonsai, lightgbm, ranger, tune, DescTools, rules, discrim, party, partykit, sparsegl)
 source("./src/hyperparameters.R")
+source("./src/PLTR.R")
 
-cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE_model_PG, RE_model_EMP, GAM_recipe, metrics, train_bake, test_bake, regularization) {
+cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE_model_PG, RE_model_EMP, inner_RF_list=NULL, GAM_recipe, metrics, train_bake, test_bake, regularization) {
   stopifnot(is(inner_folds, "vfold_cv")||is(inner_folds, "rset"))
   stopifnot(is(metrics, "class_prob_metric_set"))
   stopifnot(is(tree_algorithm, "character"))
@@ -61,73 +62,12 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
     } else if(identical(tree_algorithm,"randomforest")) {
       cat("training RE")
       set.seed(k)
-      RE_model_inner_AUC <- train(XGB_recipe, data = inner_train, method = "pre",
-                           ntrees = 100, family = "binomial", trControl = ctrl,
-                           tuneGrid = preGrid_RF, ad.alpha = 0, #tree.unbiased = FALSE, 
-                           singleconditions = FALSE,
-                           winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
-                           verbose = TRUE,
-                           metric = "AUCROC", allowParallel = TRUE,
-                           par.init=TRUE,
-                           par.final=TRUE)   
+      RE_model_inner_AUC <- inner_RF_list[[1]]
+      RE_model_inner_Brier <- inner_RF_list[[2]] 
+      RE_model_inner_PG <- inner_RF_list[[3]] 
+      RE_model_inner_EMP <- inner_RF_list[[4]] 
       
-      # fit on inner training set
-#      RE_model_inner <- train(XGB_recipe, data = analysis(inner_split$splits[[1]]), method = "pre",
-#                              ntrees = 100, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
-#                              tuneGrid = RE_model_AUC_full$bestTune, ad.alpha = 0, #tree.unbiased = FALSE, 
-#                              singleconditions = TRUE,
-#                              winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
-#                              verbose = TRUE,
-#                              metric = "AUCROC", allowParallel = TRUE,
-#                              par.init=TRUE,
-#                              par.final=TRUE)
-      
-      RE_model_inner_Brier <- train(XGB_recipe, data = train, method = "pre",
-                                 ntrees = 100, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
-                                 tuneGrid = getModelInfo("pre")[[1]]$grid( 
-                                   maxdepth = (RE_model_inner_AUC$results%>%slice_min(Brier)%>%dplyr::select(maxdepth))[[1]][1],
-                                   penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
-                                   sampfrac = 1,
-                                   mtry = (RE_model_inner_AUC$results%>%slice_min(Brier)%>%dplyr::select(mtry))[[1]][1],
-                                   use.grad = FALSE),
-                                 ad.alpha = 0, #tree.unbiased = FALSE, 
-                                 singleconditions = FALSE,
-                                 winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
-                                 verbose = TRUE,
-                                 allowParallel = TRUE,
-                                 par.init=TRUE,
-                                 par.final=TRUE)
-      
-      RE_model_inner_PG <- train(XGB_recipe, data = train, method = "pre",
-                              ntrees = 100, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
-                              tuneGrid = getModelInfo("pre")[[1]]$grid( 
-                                maxdepth = (RE_model_inner_AUC$results%>%slice_max(partialGini)%>%dplyr::select(maxdepth))[[1]][1],
-                                penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
-                                sampfrac = 1,
-                                mtry = (RE_model_inner_AUC$results%>%slice_max(partialGini)%>%dplyr::select(mtry))[[1]][1],
-                                use.grad = TRUE), ad.alpha = 0, #tree.unbiased = FALSE, 
-                              singleconditions = FALSE,
-                              winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
-                              verbose = TRUE,
-                              metric = "AUCROC", allowParallel = TRUE,
-                              par.init=TRUE,
-                              par.final=TRUE)
-      
-      RE_model_inner_EMP <- train(XGB_recipe, data = train, method = "pre",
-                                 ntrees = 100, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
-                                 tuneGrid = getModelInfo("pre")[[1]]$grid( 
-                                   maxdepth = (select_best_emp_RE_RF(RE_model_inner_AUC)%>%dplyr::select(maxdepth))[[1]][1],
-                                   penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
-                                   sampfrac = 1,
-                                   mtry = (select_best_emp_RE_RF(RE_model_inner_AUC)%>%dplyr::select(mtry))[[1]][1],
-                                   use.grad = TRUE), ad.alpha = 0, #tree.unbiased = FALSE, 
-                                 singleconditions = FALSE,
-                                 winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
-                                 verbose = TRUE,
-                                 metric = "AUCROC", allowParallel = TRUE,
-                                 par.init=TRUE,
-                                 par.final=TRUE)
-      
+      #####
       
       
     } else if(identical(tree_algorithm,"boosting")) {
@@ -202,13 +142,12 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
       features <- setdiff(names(inner_train_bake), "label")  # Exclude the label column
       combinations <- combn(features, 2)  # Generate all combinations of 2 features
       rules = c()
-      for (j in 1:ncol(combinations)) {
-        feature_pair <- combinations[, j]
-        formula <- as.formula(paste("label ~", paste(feature_pair, collapse = " + ")))
-        tree <- as.party(rpart::rpart(formula, data = inner_train_bake, maxdepth = 2))
-        extracted_rules <- partykit:::.list.rules.party(tree)
-        if(extracted_rules[1]!= "") {rules <- c(rules, extracted_rules)}
-      }
+      rules <- future.apply::future_lapply(
+        1:ncol(combinations), 
+        function(j) process_combination(combinations[, j])
+      )
+      rules <- unlist(rules)
+      rules <- rules[rules != ""]
     }   
     
     ####### 
@@ -834,13 +773,13 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
     features <- setdiff(names(train_bake), "label")  # Exclude the label column
     combinations <- combn(features, 2)  # Generate all combinations of 2 features
     rules = c()
-    for (j in 1:ncol(combinations)) {
-      feature_pair <- combinations[, j]
-      formula <- as.formula(paste("label ~", paste(feature_pair, collapse = " + ")))
-      tree <- as.party(rpart::rpart(formula, data = train_bake, maxdepth = 2))
-      extracted_rules <- partykit:::.list.rules.party(tree)
-      if(extracted_rules[1]!= "") {rules <- c(rules, extracted_rules)}
-    }   
+    rules <- future.apply::future_lapply(
+      1:ncol(combinations), 
+      function(j) process_combination(combinations[, j])
+    )
+    rules <- unlist(rules)
+    rules <- rules[rules != ""]
+  }   
     if(!is_empty(rules)) {
       SRE_train_rules_AUC <- fit_rules(train_bake, unique(rules))
       SRE_test_rules_AUC <- fit_rules(test_bake, unique(rules))
@@ -915,46 +854,50 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
     if(!is.null(RE_model_AUC$finalModel$rules)) {
       SRE_train_rules_AUC <- fit_rules(train_bake, drop_na(tibble(rules = RE_model_AUC$finalModel$rules$description))$rules)
       SRE_test_rules_AUC <- fit_rules(test_bake, drop_na(tibble(rules = RE_model_AUC$finalModel$rules$description))$rules)
+      
+      SRE_train_AUC <- cbind(SRE_train_rules_AUC, fitted_smooths_train)
+      SRE_test_AUC <- cbind(SRE_test_rules_AUC, fitted_smooths_test)
     } else {
-      SRE_train_rules_AUC <- train_bake
-      SRE_test_rules_AUC <- test_bake
+      SRE_train_AUC <- cbind(train_bake, fitted_smooths_train)
+      SRE_test_AUC <- cbind(test_bake, fitted_smooths_test)
     }
     
     if(!is.null(RE_model_Brier$finalModel$rules)) {
       SRE_train_rules_Brier <- fit_rules(train_bake, drop_na(tibble(rules = RE_model_Brier$finalModel$rules$description))$rules)
       SRE_test_rules_Brier <- fit_rules(test_bake, drop_na(tibble(rules = RE_model_Brier$finalModel$rules$description))$rules)
+      
+      SRE_train_Brier <- cbind(SRE_train_rules_Brier, fitted_smooths_train)
+      SRE_test_Brier <- cbind(SRE_test_rules_Brier, fitted_smooths_test)
+      
     } else {
-      SRE_train_rules_Brier <- train_bake
-      SRE_test_rules_Brier <- test_bake
+      SRE_train_Brier <- cbind(train_bake, fitted_smooths_train)
+      SRE_test_Brier <- cbind(test_bake, fitted_smooths_test)
     }
     
     if(!is.null(RE_model_PG$finalModel$rules)) {
       SRE_train_rules_PG <- fit_rules(train_bake, drop_na(tibble(rules = RE_model_PG$finalModel$rules$description))$rules)
       SRE_test_rules_PG <- fit_rules(test_bake, drop_na(tibble(rules = RE_model_PG$finalModel$rules$description))$rules)
+      
+      SRE_train_PG <- cbind(SRE_train_rules_PG, fitted_smooths_train)
+      SRE_test_PG <- cbind(SRE_test_rules_PG, fitted_smooths_test)
     } else {
-      SRE_train_rules_PG <- train_bake
-      SRE_test_rules_PG <- test_bake
+      SRE_train_PG <- cbind(train_bake, fitted_smooths_train)
+      SRE_test_PG <- cbind(test_bake, fitted_smooths_test)
     }
     
     if(!is.null(RE_model_EMP$finalModel$rules)) {
       SRE_train_rules_EMP <- fit_rules(train_bake, drop_na(tibble(rules = RE_model_EMP$finalModel$rules$description))$rules)
       SRE_test_rules_EMP <- fit_rules(test_bake, drop_na(tibble(rules = RE_model_EMP$finalModel$rules$description))$rules)
+      
+      SRE_train_EMP <- cbind(SRE_train_rules_EMP, fitted_smooths_train)
+      SRE_test_EMP <- cbind(SRE_test_rules_EMP, fitted_smooths_test)
+      
     } else {
-      SRE_train_rules_EMP <- train_bake
-      SRE_test_rules_EMP <- test_bake
+      SRE_train_EMP <- cbind(train_bake, fitted_smooths_train)
+      SRE_test_EMP <- cbind(test_bake, fitted_smooths_test)
     }
   }
   
-  
-  SRE_train_AUC <- cbind(SRE_train_rules_AUC, fitted_smooths_train)
-  SRE_train_Brier <- cbind(SRE_train_rules_Brier, fitted_smooths_train)
-  SRE_train_PG <- cbind(SRE_train_rules_PG, fitted_smooths_train)
-  SRE_train_EMP <- cbind(SRE_train_rules_EMP, fitted_smooths_train)
-  
-  SRE_test_AUC <- cbind(SRE_test_rules_AUC, fitted_smooths_test)
-  SRE_test_Brier <- cbind(SRE_test_rules_Brier, fitted_smooths_test)
-  SRE_test_PG <- cbind(SRE_test_rules_PG, fitted_smooths_test)
-  SRE_test_EMP <- cbind(SRE_test_rules_EMP, fitted_smooths_test)
   
   ####### 
   # Only winsorize numeric features with more than 6 values
