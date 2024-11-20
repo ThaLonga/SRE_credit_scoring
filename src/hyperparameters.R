@@ -55,7 +55,7 @@ preGrid_RF <- getModelInfo("pre")[[1]]$grid(
   maxdepth = c(5),
   penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
   sampfrac = 1,
-  #learnrate = 0,
+  learnrate = 0,
   use.grad = FALSE,
   mtry = ceiling(sqrt(ncol(train_bake_x)*c(0.5,1,2,4))),
 )
