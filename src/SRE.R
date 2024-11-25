@@ -144,7 +144,7 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
       rules = c()
       rules <- future.apply::future_lapply(
         1:ncol(combinations), 
-        function(j) process_combination(combinations[, j])
+        function(j) process_combination(combinations[, j], data = inner_train_bake)
       )
       rules <- unlist(rules)
       rules <- rules[rules != ""]
@@ -758,6 +758,7 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
   fitted_smooths_test <- data.frame(matrix(ncol = length(smooth_terms), nrow = nrow(test_bake)))
   colnames(fitted_smooths_train) <- smooth_terms
   colnames(fitted_smooths_test) <- smooth_terms
+  cat("fitting splines\n")
   for (j in seq_along(smooth_terms)) {
     current_smooth <- smooth_terms[j]
     fitted_values_train <- predict(extract_fit_engine(final_GAM_fit), train_bake, type = "terms")[, current_smooth]
@@ -768,6 +769,8 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
   
   ####### 
   # Fit rules from RE_models, seperate for AUC, Brier, PG
+  
+  cat("fitting rules\n")
   if(identical(tree_algorithm, "PLTR")) {
     cat("training RE")
     features <- setdiff(names(train_bake), "label")  # Exclude the label column
@@ -775,11 +778,11 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
     rules = c()
     rules <- future.apply::future_lapply(
       1:ncol(combinations), 
-      function(j) process_combination(combinations[, j])
+      function(j) process_combination(combinations[, j], data = train_bake)
     )
     rules <- unlist(rules)
     rules <- rules[rules != ""]
-  }   
+   
     if(!is_empty(rules)) {
       SRE_train_rules_AUC <- fit_rules(train_bake, unique(rules))
       SRE_test_rules_AUC <- fit_rules(test_bake, unique(rules))
@@ -808,6 +811,7 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
       SRE_train_EMP <- cbind(train_bake, fitted_smooths_train)
       SRE_test_EMP <- cbind(test_bake, fitted_smooths_test)
     }
+  
   } else if(identical(regularization, "SGL")) {
     if(!is.null(RE_model_AUC$finalModel$rules)) {
       SRE_train_rules_AUC <- fit_rules_SGL(train_bake, drop_na(tibble(rules = RE_model_AUC$finalModel$rules$description))$rules)
@@ -1054,6 +1058,7 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
   } else {
     #######
     # Fit initial ridge for alasso
+    cat("fitting ridge\n")
     SRE_model_ridge_auc <- 
       parsnip::logistic_reg(
         mode = "classification",
@@ -1120,6 +1125,7 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
     
     ####### 
     # Fit regular lasso for AUC, Brier, PG and extract metrics
+    cat("fitting lasso\n")
     SRE_model_auc <- 
       parsnip::logistic_reg(
         mode = "classification",

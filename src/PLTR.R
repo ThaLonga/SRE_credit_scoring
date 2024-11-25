@@ -3,12 +3,13 @@ p_load(glmnet, tidyverse, doParallel, parsnip, recipes, rsample, workflows, tune
 source("./src/hyperparameters.R")
 
 # Function to process a single combination of features
-process_combination <- function(feature_pair) {
+process_combination <- function(feature_pair, data) {
   formula <- as.formula(paste("label ~", paste(feature_pair, collapse = " + ")))
-  tree <- as.party(rpart::rpart(formula, data = inner_train_bake, maxdepth = 2))
+  tree <- as.party(rpart::rpart(formula, data = data, maxdepth = 2))
   extracted_rules <- partykit:::.list.rules.party(tree)
   if (extracted_rules[1] != "") return(extracted_rules) else return(NULL)
 }
+
 
 cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
   stopifnot(is(inner_split, "vfold_cv")||is(inner_split, "rset"))
@@ -42,21 +43,10 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
     combinations <- combn(features, 2)  # Generate all combinations of 2 features
     rules = c()
     
-    tic()
-    for (j in 1:ncol(combinations)) {
-      feature_pair <- combinations[, j]
-      formula <- as.formula(paste("label ~", paste(feature_pair, collapse = " + ")))
-      tree <- as.party(rpart::rpart(formula, data = inner_train_bake, maxdepth = 2))
-      extracted_rules <- partykit:::.list.rules.party(tree)
-      if(extracted_rules[1]!= "") {rules <- c(rules, extracted_rules)}
-    }
-    toc()
-    tic()
     rules <- future.apply::future_lapply(
       1:ncol(combinations), 
-      function(j) process_combination(combinations[, j])
+      function(j) process_combination(combinations[, j], data = inner_train_bake)
     )
-    toc()
     rules <- unlist(rules)
     rules <- rules[rules != ""]
     
@@ -336,9 +326,11 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
   combinations <- combn(features, 2)  # Generate all combinations of 2 features
   rules = c()
   
+  cat("training RE\n")
+  
   rules <- future.apply::future_lapply(
     1:ncol(combinations), 
-    function(j) process_combination(combinations[, j])
+    function(j) process_combination(combinations[, j], data = train_bake)
   )
   rules <- unlist(rules)
   rules <- rules[rules != ""]
@@ -369,6 +361,7 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
   
   #######
   # Ridge for alasso
+  cat("fitting ridge\n")
   
   PLTR_model_ridge_auc <- 
     parsnip::logistic_reg(
@@ -438,6 +431,7 @@ cv.PLTR <- function(inner_split, metrics, train_bake, test_bake) {
   ####### 
   # Fit regular lasso for AUC, Brier, PG and extract metrics
   
+  cat("fitting lasso\n")
   
   PLTR_model_auc <- 
     parsnip::logistic_reg(

@@ -7,22 +7,21 @@ loaded_results <- load_results()
 loaded_results_PLTR <- load_results("results_supp")
 loaded_results_DB <- load_results("results_DB")
 datasets <- load_data()
-nr_datasets = 4
-
-#combined_results_AUC <- bind_rows(loaded_results$GC_AUC, loaded_results$AC_AUC, loaded_results$HMEQ_AUC, loaded_results$TH02_AUC, loaded_results$LC_AUC, loaded_results$TC_AUC, loaded_results$GMSC_AUC, loaded_results_PLTR$GC_AUC_PLTR, loaded_results_PLTR$AC_AUC_PLTR, loaded_results_PLTR$HMEQ_AUC, loaded_results_PLTR$TH02_AUC, loaded_results_PLTR$LC_AUC, loaded_results_PLTR$TC_AUC, loaded_results_PLTR$GMSC_AUC) %>% dplyr::select(-...1)
-#combined_results_Brier <- bind_rows(loaded_results$GC_BRIER, loaded_results$AC_BRIER, loaded_results$HMEQ_BRIER, loaded_results$TH02_BRIER, loaded_results$LC_BRIER, loaded_results$TC_BRIER, loaded_results$GMSC_BRIER, loaded_results_PLTR$GC_BRIER_PLTR, loaded_results_PLTR$AC_BRIER_PLTR, loaded_results_PLTR$HMEQ_BRIER, loaded_results_PLTR$TH02_BRIER, loaded_results_PLTR$LC_BRIER, loaded_results_PLTR$TC_BRIER, loaded_results_PLTR$GMSC_BRIER) %>% dplyr::select(-...1)
-#combined_results_PG <- bind_rows(loaded_results$GC_PG, loaded_results$AC_PG, loaded_results$HMEQ_PG, loaded_results$TH02_PG, loaded_results$LC_PG, loaded_results$TC_PG, loaded_results$GMSC_PG, loaded_results_PLTR$GC_PG_PLTR, loaded_results_PLTR$AC_PG_PLTR, loaded_results_PLTR$HMEQ_PG, loaded_results_PLTR$TH02_PG, loaded_results_PLTR$LC_PG, loaded_results_PLTR$TC_PG, loaded_results_PLTR$GMSC_PG) %>% dplyr::select(-...1)
+nr_datasets = 8
 
 
-combined_results_AUC <- bind_rows(loaded_results$GC_RF_AUC, loaded_results$AC_RF_AUC, loaded_results$TH02_RF_AUC, loaded_results$LC_RF_AUC) %>% dplyr::select(-...1)
-combined_results_Brier <- bind_rows(loaded_results$GC_RF_BRIER, loaded_results$AC_RF_RF_BRIER, loaded_results$TH02_RF_BRIER, loaded_results$LC_RF_BRIER) %>% dplyr::select(-...1)
-combined_results_PG <- bind_rows(loaded_results$GC_RF_PG, loaded_results$AC_RF_PG, loaded_results$TH02_RF_PG, loaded_results$LC_RF_PG) %>% dplyr::select(-...1)
-
-
-combined_results_AUC_DB_config <- bind_rows(loaded_results_DB$GC_AUC_DB_config, loaded_results_DB$AC_AUC_DB_config, loaded_results_DB$HMEQ_AUC_DB_config, loaded_results_DB$TH02_AUC_DB_config, loaded_results_DB$LC_AUC_DB_config, loaded_results_DB$TC_AUC_DB_config, loaded_results_DB$GMSC_AUC_DB_config, loaded_results_PLTR$GC_AUC_DB_config_PLTR, loaded_results_PLTR$AC_AUC_DB_config_PLTR, loaded_results_PLTR$HMEQ_AUC_DB_config, loaded_results_PLTR$TH02_AUC_DB_config, loaded_results_PLTR$LC_AUC_DB_config, loaded_results_PLTR$TC_AUC_DB_config, loaded_results_PLTR$GMSC_AUC_DB_config) %>% dplyr::select(-...1)
-combined_results_Brier_DB_config <- bind_rows(loaded_results_DB$GC_BRIER_DB_config, loaded_results_DB$AC_BRIER_DB_config, loaded_results_DB$HMEQ_BRIER_DB_config, loaded_results_DB$TH02_BRIER_DB_config, loaded_results_DB$LC_BRIER_DB_config, loaded_results_DB$TC_BRIER_DB_config, loaded_results_DB$GMSC_BRIER_DB_config, loaded_results_PLTR$GC_BRIER_DB_config_PLTR, loaded_results_PLTR$AC_BRIER_DB_config_PLTR, loaded_results_PLTR$HMEQ_BRIER_DB_config, loaded_results_PLTR$TH02_BRIER_DB_config, loaded_results_PLTR$LC_BRIER_DB_config, loaded_results_PLTR$TC_BRIER_DB_config, loaded_results_PLTR$GMSC_BRIER_DB_config) %>% dplyr::select(-...1)
-combined_results_PG_DB_config <- bind_rows(loaded_results_DB$GC_PG_DB_config, loaded_results_DB$AC_PG_DB_config, loaded_results_DB$HMEQ_PG_DB_config, loaded_results_DB$TH02_PG_DB_config, loaded_results_DB$LC_PG_DB_config, loaded_results_DB$TC_PG_DB_config, loaded_results_DB$GMSC_PG_DB_config, loaded_results_PLTR$GC_PG_DB_config_PLTR, loaded_results_PLTR$AC_PG_DB_config_PLTR, loaded_results_PLTR$HMEQ_PG_DB_config, loaded_results_PLTR$TH02_PG_DB_config, loaded_results_PLTR$LC_PG_DB_config, loaded_results_PLTR$TC_PG_DB_config, loaded_results_PLTR$GMSC_PG_DB_config) %>% dplyr::select(-...1)
-
+combined_results_AUC <- loaded_results[names(loaded_results) %>% grep("RF_AUC", .)] %>% 
+  bind_rows() %>%
+  select(-...1)  # Adjust the column name as necessary
+combined_results_Brier <- loaded_results[names(loaded_results) %>% grep("RF_BRIER", .)] %>% 
+  bind_rows() %>%
+  select(-...1)  # Adjust the column name as necessary
+combined_results_PG <- loaded_results[names(loaded_results) %>% grep("RF_PG", .)] %>% 
+  bind_rows() %>%
+  select(-...1)  # Adjust the column name as necessary
+combined_results_EMP <- loaded_results[names(loaded_results) %>% grep("RF_EMP", .)] %>% 
+  bind_rows() %>%
+  select(-...1)  # Adjust the column name as necessary
 
 #For no duplicate code
 #combined_results_AUC <- combined_results_AUC_DB_config
@@ -70,7 +69,20 @@ finished_PG_table <- combined_results_PG_table %>%
   dplyr::select(dataset, algorithm, PG) %>%
   pivot_wider(names_from = dataset, values_from = PG)
 
-kable(rbind(finished_AUC_table, finished_Brier_table, finished_PG_table), "latex", booktabs = T)
+combined_results_EMP_table <- combined_results_EMP %>%
+  group_by(dataset, algorithm) %>%
+  summarise(avg_metric = round(mean(metric), 3), sd_metric = round(sd(metric), 3)) %>%
+  ungroup() %>%
+  mutate_if(is.numeric, ~scales::number(., accuracy = 0.001))
+
+combined_results_EMP_table$sd_brackets <- mapply(paste, "(", combined_results_EMP_table$sd_metric, ")", MoreArgs = list(sep = ""))
+combined_results_EMP_table$EMP <- mapply(paste, combined_results_EMP_table$avg_metric, combined_results_EMP_table$sd_brackets, MoreArgs = list(sep = " "))
+
+finished_EMP_table <- combined_results_EMP_table %>%
+  dplyr::select(dataset, algorithm, EMP) %>%
+  pivot_wider(names_from = dataset, values_from = EMP)
+
+kable(rbind(finished_AUC_table, finished_Brier_table, finished_PG_table, finished_EMP_table), "latex", booktabs = T)
 #####
 
 
@@ -79,14 +91,17 @@ kable(rbind(finished_AUC_table, finished_Brier_table, finished_PG_table), "latex
 average_ranks_AUC <- avg_ranks(combined_results_AUC)
 average_ranks_Brier <- avg_ranks(combined_results_Brier, direction = "min")
 average_ranks_PG <- avg_ranks(combined_results_PG)
+average_ranks_EMP <- avg_ranks(combined_results_EMP)
 
 avg_ranks_summarized_AUC <- avg_ranks_summarized(average_ranks_AUC)
 avg_ranks_summarized_Brier <- avg_ranks_summarized(average_ranks_Brier)
 avg_ranks_summarized_PG <- avg_ranks_summarized(average_ranks_PG)
+avg_ranks_summarized_EMP <- avg_ranks_summarized(average_ranks_EMP)
 
 avg_ranks_summarized_AUC_latex<- xtable(avg_ranks_summarized_AUC)
 avg_ranks_summarized_Brier_latex<- xtable(avg_ranks_summarized_Brier)
 avg_ranks_summarized_PG_latex<- xtable(avg_ranks_summarized_PG)
+avg_ranks_summarized_EMP_latex<- xtable(avg_ranks_summarized_EMP)
 
 #kable(avg_ranks_summarized_AUC, "latex", booktabs = T)
 
@@ -144,10 +159,10 @@ table_latex <- kable(table, "latex", booktabs = T)
 combined_results_AUC$group <- paste(combined_results_AUC$dataset, combined_results_AUC$nr_fold)
 AUC_prep_rank <- combined_results_AUC %>% dplyr::select(group, algorithm, metric) %>% pivot_wider(names_from = algorithm, values_from = metric) %>% rename("id" = group)
 AUC_bayes <- perf_mod(AUC_prep_rank,
-                      iter = 20000,
+                      iter = 50000,
                       seed = 42)
 
-AUC_SRE_RE <- contrast_models(AUC_bayes, c(rep('SRE',4), rep('RE', 4)), rep(c('LRR', 'RF', 'RE', 'SRE'),2))
+AUC_SRE_RE <- contrast_models(AUC_bayes, c(rep('SRE_boosting',4), rep('RE_boosting', 4)), rep(c('LRR', 'RF', 'RE_boosting', 'SRE_boosting'),2))
 autoplot(AUC_SRE_RE, size = 0.01)
 summary(AUC_SRE_RE, size = 0.01) %>% 
   dplyr::select(contrast, starts_with("pract"))
@@ -205,31 +220,48 @@ PG_prep_rank <- combined_results_PG %>% dplyr::select(group, algorithm, metric) 
 #Scale between 0.5 and 1
 max_PG <- PG_prep_rank %>% dplyr::select(where(is.numeric)) %>% apply(1,max)
 PG_scaled <- cbind(PG_prep_rank[1],
-                      0.5 + 0.5*(PG_prep_rank[-1]/max_PG))
+                   0.5 + 0.5*(PG_prep_rank[-1]/max_PG))
 PG_bayes <- perf_mod(PG_scaled,
-                        iter = 20000,
-                        seed = 42)
+                     iter = 20000,
+                     seed = 42)
 
 PG_contrasts <- contrast_models(PG_bayes)
 autoplot(PG_contrasts, size = 0.01)
 kable(summary(PG_contrasts, size = 0.01) %>% 
-  dplyr::select(contrast, starts_with("pract")),format = "latex", booktabs = T)
+        dplyr::select(contrast, starts_with("pract")),format = "latex", booktabs = T)
+
+
+# EMP
+combined_results_EMP$group <- paste(combined_results_EMP$dataset, combined_results_EMP$nr_fold)
+EMP_prep_rank <- combined_results_EMP %>% dplyr::select(group, algorithm, metric) %>% pivot_wider(names_from = algorithm, values_from = metric) %>% rename("id" = group)
+#Scale between 0.5 and 1
+max_EMP <- EMP_prep_rank %>% dplyr::select(where(is.numeric)) %>% apply(1,max)
+EMP_scaled <- cbind(EMP_prep_rank[1],
+                   0.5 + 0.5*(EMP_prep_rank[-1]/max_EMP))
+EMP_bayes <- perf_mod(EMP_scaled,
+                     iter = 20000,
+                     seed = 42)
+
+EMP_contrasts <- contrast_models(EMP_bayes)
+autoplot(EMP_contrasts, size = 0.01)
+kable(summary(EMP_contrasts, size = 0.01) %>% 
+        dplyr::select(contrast, starts_with("pract")),format = "latex", booktabs = T)
 
 
 
 #Compare important algorithms
-control <- c(rep('RE',4), rep('SRE',4))
-compare <- c("LRR", "RF", "PLTR", "SRE", "LRR", "RF", "PLTR", "RE")
+control <- c(rep('SRE_boosting',3), rep('SRE_bag',3))
+compare <- rep(c("LRR", "RF", "SRE_boosting"),2)
 
 control_small <- rep('SRE',2)
 compare_small <- c("LRR", "RF")
 
 
 AUC_comparison <- contrast_models(AUC_bayes, 
-                                  control_small,
-                                  compare_small)
+                                  control,
+                                  compare)
 plots <- autoplot(AUC_comparison, size = 0.01) +
-  facet_wrap(~contrast, scales = "free", nrow = 1)
+  facet_wrap(~contrast, scales = "free", nrow = 2)
 print(plots)
 
 kable(summary(AUC_comparison, size = 0.01) %>% 
@@ -238,11 +270,11 @@ kable(summary(AUC_comparison, size = 0.01) %>%
 
 
 Brier_comparison <- contrast_models(Brier_bayes, 
-                                    control_small,
-                                    compare_small)
+                                    control,
+                                    compare)
 #kable(comparison_Brier, "latex", booktabs = T)
 plots <- autoplot(Brier_comparison, size = 0.01) +
-  facet_wrap(~contrast, scales = "free", nrow = 1)
+  facet_wrap(~contrast, scales = "free", nrow = 2)
 print(plots)
 
 kable(summary(Brier_comparison, size = 0.01) %>% 
@@ -252,17 +284,30 @@ kable(summary(Brier_comparison, size = 0.01) %>%
 
 
 PG_comparison <- contrast_models(PG_bayes, 
-                                 control_small,
-                                 compare_small)
+                                 control,
+                                 compare)
 
 plots <- autoplot(PG_comparison, size = 0.01) +
-  facet_wrap(~contrast, scales = "free", nrow = 1)
+  facet_wrap(~contrast, scales = "free", nrow = 2)
 print(plots)
 
 kable(summary(PG_comparison, size = 0.01) %>% 
         dplyr::select(contrast, starts_with("pract")) %>%
         mutate_if(is.numeric, round, digits = 3), "latex", booktabs = T)
 
+
+
+EMP_comparison <- contrast_models(EMP_bayes, 
+                                 control,
+                                 compare)
+
+plots <- autoplot(EMP_comparison, size = 0.01) +
+  facet_wrap(~contrast, scales = "free", nrow = 2)
+print(plots)
+
+kable(summary(EMP_comparison, size = 0.01) %>% 
+        dplyr::select(contrast, starts_with("pract")) %>%
+        mutate_if(is.numeric, round, digits = 3), "latex", booktabs = T)
 
 
 

@@ -44,12 +44,13 @@ metric_results <- data.frame(
 )
 predictions <- list()
 
-dataset_counter = 8
+dataset_counter = 1
 
 for(dataset in datasets[8]) {
   
   #subsampling
-  dataset <- dataset[sample(nrow(dataset), round(fraction*nrow(dataset))), ]
+  set.seed(111)
+  #dataset <- dataset[sample(nrow(dataset), round(fraction*nrow(dataset)), ), ]
   
   
   AUC_results <- metric_results
@@ -62,7 +63,7 @@ for(dataset in datasets[8]) {
   set.seed(111)
   # create 5x2 folds
   folds <- vfold_cv(dataset, v = outerfolds, repeats = nr_repeats, strata = NULL)
-  for(i in 1:nrow(folds)) { #CHANGE
+  for(i in 4:nrow(folds)) { #CHANGE
     cat("Fold", i, "/ 10 \n")
     train <- analysis(folds$splits[[i]])
     test <- assessment(folds$splits[[i]])
@@ -474,7 +475,7 @@ for(dataset in datasets[8]) {
     
     emp <- final_RF_fit_emp %>%
       collect_emp()
-    EMP_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", emp)
+    EMP_results[nrow(EMP_results) + 1,] = list(dataset_vector[dataset_counter], i, "RF", emp)
     
     
     #####
@@ -1189,9 +1190,9 @@ for(dataset in datasets[8]) {
     
     
     predictions_AUC = cbind(LRR_predictions_AUC, GAM_predictions, LDA_predictions, CTREE_predictions_AUC, RF_predictions_AUC, XGB_predictions_AUC, LGBM_predictions_AUC, RE_RF_predictions_AUC, RE_boosting_predictions_AUC, RE_bag_predictions, PLTR_predictions_AUC, SRE_RF_predictions_AUC, SRE_bag_predictions_AUC, SRE_boosting_predictions_AUC, SRE_PLTR_predictions_AUC)
-    predictions_Brier = cbind(LRR_predictions_Brier, GAM_predictions, LDA_predictions, CTREE_predictions_Brier, RF_predictions_Brier, XGB_predictions_Brier, LGBM_predictions_Brier, RE_RF_predictions_Brier, RE_boosting_predictions_Brier, RE_bag_predictions, PLTR_predictions_Brier, SRE_RF_predictions_Brier, SRE_bag_predictions_Brier, SRE_PLTR_predictions_Brier)
-    predictions_PG = cbind(LRR_predictions_PG, GAM_predictions, LDA_predictions, CTREE_predictions_PG, RF_predictions_PG, XGB_predictions_PG, LGBM_predictions_PG, RE_RF_predictions_PG, RE_boosting_predictions_PG, RE_bag_predictions, PLTR_predictions_PG, SRE_RF_predictions_PG, SRE_bag_predictions_PG, SRE_PLTR_predictions_PG)
-    predictions_EMP = cbind(LRR_predictions_EMP, GAM_predictions, LDA_predictions, CTREE_predictions_EMP, RF_predictions_EMP, XGB_predictions_EMP, LGBM_predictions_EMP, RE_RF_predictions_EMP, RE_boosting_predictions_EMP, RE_bag_predictions, PLTR_predictions_EMP, SRE_RF_predictions_EMP, SRE_bag_predictions_EMP, SRE_PLTR_predictions_EMP)
+    predictions_Brier = cbind(LRR_predictions_Brier, GAM_predictions, LDA_predictions, CTREE_predictions_Brier, RF_predictions_Brier, XGB_predictions_Brier, LGBM_predictions_Brier, RE_RF_predictions_Brier, RE_boosting_predictions_Brier, RE_bag_predictions, PLTR_predictions_Brier, SRE_RF_predictions_Brier, SRE_bag_predictions_Brier, SRE_boosting_predictions_AUC, SRE_PLTR_predictions_Brier)
+    predictions_PG = cbind(LRR_predictions_PG, GAM_predictions, LDA_predictions, CTREE_predictions_PG, RF_predictions_PG, XGB_predictions_PG, LGBM_predictions_PG, RE_RF_predictions_PG, RE_boosting_predictions_PG, RE_bag_predictions, PLTR_predictions_PG, SRE_RF_predictions_PG, SRE_bag_predictions_PG, SRE_boosting_predictions_AUC, SRE_PLTR_predictions_PG)
+    predictions_EMP = cbind(LRR_predictions_EMP, GAM_predictions, LDA_predictions, CTREE_predictions_EMP, RF_predictions_EMP, XGB_predictions_EMP, LGBM_predictions_EMP, RE_RF_predictions_EMP, RE_boosting_predictions_EMP, RE_bag_predictions, PLTR_predictions_EMP, SRE_RF_predictions_EMP, SRE_bag_predictions_EMP, SRE_boosting_predictions_AUC, SRE_PLTR_predictions_EMP)
     write.csv(predictions_AUC, file = paste("./predictions/",dataset_vector[dataset_counter],"_predictions_repeat_", i, "_AUC.csv", sep = ""))
     write.csv(predictions_Brier, file = paste("./predictions/",dataset_vector[dataset_counter],"_predictions_repeat_", i, "_Brier.csv", sep = ""))
     write.csv(predictions_PG, file = paste("./predictions/",dataset_vector[dataset_counter],"_predictions_repeat_", i, "_PG.csv", sep = ""))
@@ -1203,6 +1204,9 @@ for(dataset in datasets[8]) {
   write.csv(Brier_results, file = paste("./results/",dataset_vector[dataset_counter],"_RF_BRIER.csv", sep = ""))
   PG_results$metric<-unlist(PG_results$metric)
   write.csv(PG_results, file = paste("./results/",dataset_vector[dataset_counter],"_RF_PG.csv", sep = ""))
+  EMP_results <- drop_na(EMP_results)
+  EMP_results$metric<-unlist(EMP_results$metric)
+  write.csv(EMP_results, file = paste("./results/",dataset_vector[dataset_counter],"_RF_EMP.csv", sep = ""))
   
   dataset_counter <- dataset_counter + 1
 }
