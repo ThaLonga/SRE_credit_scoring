@@ -66,7 +66,7 @@ kaggle <- kaggle %>%
   rename("NumberOfTime60To89DaysPastDueNotWorse" = "NumberOfTime60-89DaysPastDueNotWorse") %>%
   mutate(label = factor(label, 
                         labels = make.names(levels(label)))) %>%
-  select(-...1)
+  dplyr::select(-...1)
 
 #add flags for missing values
 kaggle$MonthlyIncome_flag <- as.factor(ifelse(((kaggle$MonthlyIncome == 0)|is.na(kaggle$MonthlyIncome)), 1, 0))
@@ -116,7 +116,7 @@ save(TC, file = "data/GOLD/TC.Rda")
 
 #PAKDD
 PAKDD <- read_delim("data/PAKDD 2010/PAKDD.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
-PAKDD <- PAKDD %>% select(-Column2, -Column11, -Column12, -Column14, -Column15, -Column16, -Column18, -Column35, -Column36, -Column37, -Column39, -Column52, -Column53)
+PAKDD <- PAKDD %>% dplyr::select(-Column2, -Column11, -Column12, -Column14, -Column15, -Column16, -Column18, -Column35, -Column36, -Column37, -Column39, -Column52, -Column53)
 PAKDD[PAKDD=="NULL"]<-NA
 PAKDD$Column4[PAKDD$Column4=="0"]<-NA
 PAKDD$Column7[PAKDD$Column7=="N"]<-NA

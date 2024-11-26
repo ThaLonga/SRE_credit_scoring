@@ -46,7 +46,7 @@ predictions <- list()
 
 dataset_counter = 1
 
-for(dataset in datasets[8]) {
+for(dataset in datasets) {
   
   #subsampling
   set.seed(111)
@@ -63,7 +63,7 @@ for(dataset in datasets[8]) {
   set.seed(111)
   # create 5x2 folds
   folds <- vfold_cv(dataset, v = outerfolds, repeats = nr_repeats, strata = NULL)
-  for(i in 4:nrow(folds)) { #CHANGE
+  for(i in 1:nrow(folds)) { #CHANGE
     cat("Fold", i, "/ 10 \n")
     train <- analysis(folds$splits[[i]])
     test <- assessment(folds$splits[[i]])
