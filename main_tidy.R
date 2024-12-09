@@ -30,7 +30,7 @@ metric = "AUCROC"
 nr_repeats = 3
 outerfolds = 2
 fraction = 1 #subsampling fraction
-dataset_vector = c("GC", "AC", "HMEQ", "TH02", "LC", "TC", "GMSC", "PAKDD")
+dataset_vector = c("GC", "AC", "HMEQ", "TH02", "LC", "TC", "GMSC", "PAKDD", "BF")
 
 metrics = metric_set(roc_auc, brier_class)
 
@@ -46,7 +46,7 @@ predictions <- list()
 
 dataset_counter = 1
 
-for(dataset in datasets) {
+for(dataset in datasets[9]) {
   
   #subsampling
   set.seed(111)
@@ -319,30 +319,6 @@ for(dataset in datasets) {
     
     
     #####
-    # QDA #needs CFS
-    #####
-#    print("QDA")
-#    
-#    train_bake_selected_dummies <- XGB_recipe %>% prep(train_bake_selected) %>% bake(train_bake_selected)
-#    test_bake_selected_dummies <- XGB_recipe %>% prep(train_bake_selected) %>% bake(test_bake_selected)
-#    
-#    QDA_model <- qda(x = train_bake_selected%>%dplyr::select(-label), grouping = train_bake_selected$label)
-#    
-#    #works but suboptimal
-#    LDA_model <- lda(label~., data = train_bake)
-#    QDA_preds <- data.frame(predict(object = QDA_model, newdata = test_bake_selected%>%dplyr::select(-label) %>%
-#  mutate_if(is.character, as.numeric), type = 'prob')$posterior)
-#    LDA_preds$label <- test_bake$label
-#    #AUC
-#    g <- roc(label ~ X1, data = LDA_preds, direction = "<")
-#    AUC <- g$auc
-#    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "LDA", AUC)
-#    print(AUC)
-   
-   
-   
-    
-    #####
     # CTREE
     #####
     print("CTREE")    
@@ -408,8 +384,8 @@ for(dataset in datasets) {
     
     #reload hyperparameters because it uses ncol(train_bake_x)
     source("./src/hyperparameters.R")
-    
-    
+     
+     
     #tidy
     
     RF_model <- 
@@ -634,14 +610,18 @@ for(dataset in datasets) {
 
     set.seed(innerseed)
     tic()
+    
+    #try lambda min instead of 1se
     RE_model_boosting <- train(XGB_recipe, data = train, method = "pre",
                       ntrees = 100, tree.unbiased = FALSE, family = "binomial", trControl = ctrl,
-                      tuneGrid = preGrid_boosting, ad.alpha = 0, singleconditions = FALSE,
+                      tuneGrid = preGrid_boosting, singleconditions = FALSE,
                       winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
+                      ad.alpha = 0,
                       verbose = TRUE,
                       metric = "AUCROC", allowParallel = FALSE,
                       par.init=FALSE,
-                      par.final=FALSE)    
+                      par.final=FALSE,
+                      nfolds=3)    
     toc()
     #AUC
     RE_preds_boosting <- predict(RE_model_boosting, test, type = 'probs')
@@ -667,7 +647,8 @@ for(dataset in datasets) {
                             verbose = TRUE,
                             allowParallel = TRUE,
                             par.init=TRUE,
-                            par.final=TRUE)
+                            par.final=TRUE,
+                            nfolds = 3)
     RE_preds_boosting <- predict(RE_model_boosting_Brier, test, type = 'prob')
     RE_preds_boosting$label <- test$label
     
@@ -683,14 +664,15 @@ for(dataset in datasets) {
                             tuneGrid = getModelInfo("pre")[[1]]$grid( 
                               maxdepth = (RE_model_boosting$results%>%slice_max(partialGini)%>%dplyr::select(maxdepth))[[1]][1],
                               learnrate = (RE_model_boosting$results%>%slice_max(partialGini)%>%dplyr::select(learnrate))[[1]][1],
-                              penalty.par.val = c("lambda.1se"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
+                              penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
                               sampfrac = 1,
                               use.grad = TRUE), tree.unbiased = FALSE, ad.alpha = 0, singleconditions = FALSE,
                             winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
                             verbose = TRUE,
                             metric = "AUCROC", allowParallel = TRUE,
                             par.init=TRUE,
-                            par.final=TRUE)
+                            par.final=TRUE,
+                            nfolds = 3)
     RE_preds_boosting <- predict(RE_model_boosting_PG, test, type = 'prob')
     RE_preds_boosting$label <- test$label
     
@@ -707,7 +689,7 @@ for(dataset in datasets) {
                                   tuneGrid = getModelInfo("pre")[[1]]$grid( 
                                     maxdepth = (RE_boosting_EMP_params%>%dplyr::select(maxdepth))[[1]][1],
                                     learnrate = (RE_boosting_EMP_params%>%dplyr::select(learnrate))[[1]][1],
-                                    penalty.par.val = c("lambda.1se"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
+                                    penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
                                     sampfrac = 1,
                                     use.grad = TRUE), tree.unbiased = FALSE, ad.alpha = 0, singleconditions = FALSE,
                                   winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
@@ -720,7 +702,7 @@ for(dataset in datasets) {
     
     #Save predictions
     RE_boosting_predictions_EMP <- RE_preds_boosting$X1
-    
+     
     emp <- empCreditScoring(RE_preds_boosting$X1, RE_preds_boosting$label)$EMPC
     EMP_results[nrow(EMP_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE_boosting", emp)
     
@@ -733,20 +715,7 @@ for(dataset in datasets) {
     # same as above but with RF instead of boosting
     # Later: change to biased tree to employ rpart when available in package
     print("RE: RF")
-    
-#    set.seed(innerseed)
-#    tic()
-#    RE_model_RF <- train(XGB_recipe, data = train, method = "pre",
-#                      ntrees = 100, #tree.unbiased = FALSE, 
-#                      family = "binomial", trControl = ctrl,
-#                      tuneGrid = preGrid_RF, ad.alpha = 0, singleconditions = FALSE,
-#                      winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
-#                      verbose = TRUE,
-#                      metric = "AUCROC"#, allowParallel = TRUE
-#                      #par.init=TRUE,
-#                      #par.final=TRUE
-#                      )
-#    toc()
+
     
     ######
     # BETTER?
@@ -884,20 +853,20 @@ for(dataset in datasets) {
     Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE_RF", brier)
     
     #PG
-#    RE_model_RF_PG <- train(XGB_recipe, data = train, method = "pre",
-#                            ntrees = 100, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
-#                            tuneGrid = getModelInfo("pre")[[1]]$grid( 
-#                              maxdepth = (RE_model_RF$results%>%slice_max(partialGini)%>%dplyr::select(maxdepth))[[1]][1],
-#                              penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
-#                              sampfrac = 1,
-#                              mtry = (RE_model_RF$results%>%slice_max(partialGini)%>%dplyr::select(mtry))[[1]][1],
-#                              use.grad = TRUE), ad.alpha = 0, #tree.unbiased = FALSE, 
-#                            singleconditions = FALSE,
-#                            winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
-#                            verbose = TRUE,
-#                            metric = "AUCROC", allowParallel = TRUE,
-#                            par.init=TRUE,
-#                            par.final=TRUE)
+    RE_model_RF_PG <- train(XGB_recipe, data = train, method = "pre",
+                            ntrees = 100, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+                            tuneGrid = getModelInfo("pre")[[1]]$grid( 
+                              maxdepth = (RE_model_RF$results%>%slice_max(partialGini)%>%dplyr::select(maxdepth))[[1]][1],
+                              penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
+                              sampfrac = 1,
+                              mtry = (RE_model_RF$results%>%slice_max(partialGini)%>%dplyr::select(mtry))[[1]][1],
+                              use.grad = TRUE), ad.alpha = 0, #tree.unbiased = FALSE, 
+                            singleconditions = FALSE,
+                            winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
+                            verbose = TRUE,
+                            metric = "AUCROC", allowParallel = TRUE,
+                            par.init=TRUE,
+                            par.final=TRUE)
     RE_preds_RF <- data.frame("X1"=predict(RE_model_RF_PG, test_bake, type = 'response'))
     RE_preds_RF$label <- test$label
     
@@ -908,21 +877,21 @@ for(dataset in datasets) {
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE_RF", pg)
     
     #EMP
-#    RE_RF_EMP_params <- select_best_emp_RE_RF(RE_model_RF)
-#    RE_model_RF_EMP <- train(XGB_recipe, data = train, method = "pre",
-#                            ntrees = 100, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
-#                            tuneGrid = getModelInfo("pre")[[1]]$grid( 
-#                              maxdepth = (RE_RF_EMP_params%>%dplyr::select(maxdepth))[[1]][1],
-#                              penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
-#                              sampfrac = 1,
-#                              mtry = (RE_RF_EMP_params%>%dplyr::select(mtry))[[1]][1],
-#                              use.grad = TRUE), ad.alpha = 0, #tree.unbiased = FALSE, 
-#                            singleconditions = FALSE,
-#                            winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
-#                            verbose = TRUE,
-#                            metric = "AUCROC", allowParallel = TRUE,
-#                            par.init=TRUE,
-#                            par.final=TRUE)
+    RE_RF_EMP_params <- select_best_emp_RE_RF(RE_model_RF)
+    RE_model_RF_EMP <- train(XGB_recipe, data = train, method = "pre",
+                            ntrees = 100, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
+                            tuneGrid = getModelInfo("pre")[[1]]$grid( 
+                              maxdepth = (RE_RF_EMP_params%>%dplyr::select(maxdepth))[[1]][1],
+                              penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
+                              sampfrac = 1,
+                              mtry = (RE_RF_EMP_params%>%dplyr::select(mtry))[[1]][1],
+                              use.grad = TRUE), ad.alpha = 0, #tree.unbiased = FALSE, 
+                            singleconditions = FALSE,
+                            winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
+                            verbose = TRUE,
+                            metric = "AUCROC", allowParallel = TRUE,
+                            par.init=TRUE,
+                            par.final=TRUE)
     RE_preds_RF <- data.frame("X1"=predict(RE_model_RF_EMP, test_bake, type = 'response'))
     RE_preds_RF$label <- test$label
     
@@ -1197,16 +1166,16 @@ for(dataset in datasets) {
     write.csv(predictions_Brier, file = paste("./predictions/",dataset_vector[dataset_counter],"_predictions_repeat_", i, "_Brier.csv", sep = ""))
     write.csv(predictions_PG, file = paste("./predictions/",dataset_vector[dataset_counter],"_predictions_repeat_", i, "_PG.csv", sep = ""))
     write.csv(predictions_EMP, file = paste("./predictions/",dataset_vector[dataset_counter],"_predictions_repeat_", i, "_EMP.csv", sep = ""))
-    
+
   }
   
-  write.csv(AUC_results, file = paste("./results/",dataset_vector[dataset_counter],"_RF_AUC.csv", sep = ""))
-  write.csv(Brier_results, file = paste("./results/",dataset_vector[dataset_counter],"_RF_BRIER.csv", sep = ""))
+  write.csv(AUC_results, file = paste("./results/",dataset_vector[dataset_counter],"_v2_AUC_boost_rerun.csv", sep = ""))
+  write.csv(Brier_results, file = paste("./results/",dataset_vector[dataset_counter],"_v2_BRIER_boost_rerun.csv", sep = ""))
   PG_results$metric<-unlist(PG_results$metric)
-  write.csv(PG_results, file = paste("./results/",dataset_vector[dataset_counter],"_RF_PG.csv", sep = ""))
+  write.csv(PG_results, file = paste("./results/",dataset_vector[dataset_counter],"_v2_PG_boost_rerun.csv", sep = ""))
   EMP_results <- drop_na(EMP_results)
   EMP_results$metric<-unlist(EMP_results$metric)
-  write.csv(EMP_results, file = paste("./results/",dataset_vector[dataset_counter],"_RF_EMP.csv", sep = ""))
+  write.csv(EMP_results, file = paste("./results/",dataset_vector[dataset_counter],"_v2_EMP_boost_rerun.csv", sep = ""))
   
   dataset_counter <- dataset_counter + 1
 }
