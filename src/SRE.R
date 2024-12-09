@@ -464,6 +464,209 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
       full_lambdas_PG[k] <- best_lambda_PG_SGL
       full_lambdas_EMP[k] <- best_lambda_EMP_SGL
     } else {
+      
+      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####
+      # cv.glmnet
+      #####
+      
+      AUC_inner_SGL_table_train <- SRE_recipe_AUC %>%prep()%>% bake(training(SRE_split_AUC$splits[[1]]))
+      Brier_inner_SGL_table_train <- SRE_recipe_Brier %>%prep()%>% bake(training(SRE_split_Brier$splits[[1]]))
+      PG_inner_SGL_table_train <- SRE_recipe_PG %>%prep()%>% bake(training(SRE_split_PG$splits[[1]]))
+      EMP_inner_SGL_table_train <- SRE_recipe_EMP %>%prep()%>% bake(training(SRE_split_EMP$splits[[1]]))      
+      
+      AUC_inner_SGL_table_test <- SRE_recipe_AUC %>%prep()%>% bake(assessment(SRE_split_AUC$splits[[1]]))
+      Brier_inner_SGL_table_test <- SRE_recipe_Brier %>%prep()%>% bake(assessment(SRE_split_Brier$splits[[1]]))
+      PG_inner_SGL_table_test <- SRE_recipe_PG %>%prep()%>% bake(assessment(SRE_split_PG$splits[[1]]))
+      EMP_inner_SGL_table_test <- SRE_recipe_EMP %>%prep()%>% bake(assessment(SRE_split_EMP$splits[[1]]))
+      
+      AUC_inner_SGL_table_train_x <- AUC_inner_SGL_table_train %>% select(-label)
+      Brier_inner_SGL_table_train_x <- Brier_inner_SGL_table_train %>% select(-label)
+      PG_inner_SGL_table_train_x <- PG_inner_SGL_table_train %>% select(-label)
+      EMP_inner_SGL_table_train_x <- EMP_inner_SGL_table_train %>% select(-label)
+      
+
+      
+      
+      data_list <- list(AUC_inner_SGL_table_train,
+                        Brier_inner_SGL_table_train,
+                        PG_inner_SGL_table_train,
+                        EMP_inner_SGL_table_train)
+      
+      clusterExport(cl, list("glmnet"))
+      
+      
+      fit_glmnet_parallel <- function(metric_data) {
+        
+      ## Fix fold ids for reuse
+      glmnet.args <- list()
+      glmnet.args$x <- as.matrix(metric_data%>%select(-label))
+      glmnet.args$y <- metric_data$label
+      glmnet.args$family <- 'binomial'
+      glmnet.args$parallel <- TRUE
+      glmnet.args$standardize <- FALSE
+      glmnet.args$alpha <- 0
+      glmnet.args$penalty.factor <- NULL
+      glmnet.args$relax <- FALSE
+      
+      ## Compute penalty weights
+      glmnet.fit <- do.call(glmnet, glmnet.args)
+      return(glmnet.fit)
+      }
+      
+      glmnets_ridge <- lapply(data_list, fit_glmnet_parallel)
+      
+      inner_ridge_preds_AUC <- predict(glmnets_ridge[[1]], as.matrix(AUC_inner_SGL_table_test%>%select(-label)), type = "response")
+      inner_ridge_preds_Brier <- predict(glmnets_ridge[[2]], as.matrix(Brier_inner_SGL_table_test%>%select(-label)), type = "response")
+      inner_ridge_preds_PG <- predict(glmnets_ridge[[3]], as.matrix(PG_inner_SGL_table_test%>%select(-label)), type = "response")
+      inner_ridge_preds_EMP <- predict(glmnets_ridge[[4]], as.matrix(EMP_inner_SGL_table_test%>%select(-label)), type = "response")
+      
+      
+      AUC_inner_preds_labels_list <- lapply(1:ncol(inner_ridge_preds_AUC), function(i) {
+        list(preds = inner_ridge_preds_AUC[,i], labels = AUC_inner_SGL_table_test%>%select(label))
+      })
+      Brier_inner_preds_labels_list <- lapply(1:ncol(inner_ridge_preds_Brier), function(i) {
+        list(preds = inner_ridge_preds_Brier[,i], labels = Brier_inner_SGL_table_test%>%select(label))
+      })
+      PG_inner_preds_labels_list <- lapply(1:ncol(inner_ridge_preds_PG), function(i) {
+        list(preds = inner_ridge_preds_PG[,i], labels = PG_inner_SGL_table_test%>%select(label))
+      })
+      EMP_inner_preds_labels_list <- lapply(1:ncol(inner_ridge_preds_EMP), function(i) {
+        list(preds = inner_ridge_preds_EMP[,i], labels = EMP_inner_SGL_table_test%>%select(label))
+      })
+
+            
+      par_auc <- function(data_list) {
+        preds <- data_list$preds
+        labels <- data_list$labels$label
+        return(pROC::roc(label ~ X1, data = data.frame(X1 = preds, label = labels))$auc)
+      }
+      par_brier <- function(data_list) {
+        preds <- data_list$preds
+        labels <- data_list$labels$label
+        return(brier_score(truth = labels, preds = preds))
+      }
+      par_pg <- function(data_list) {
+        preds <- data_list$preds
+        labels <- data_list$labels$label
+        print(preds)
+        return(partialGini(preds, labels))
+      }
+      par_emp <- function(data_list) {
+        preds <- data_list$preds
+        labels <- data_list$labels$label
+        return(empCreditScoring(preds, labels)$EMPC)
+      }
+      
+      clusterExport(cl, list("brier_score", "par_auc", "par_brier", "partialGini", "par_pg", "empCreditScoring"))
+      
+      AUC_inner_ridge_list <- parLapply(cl, AUC_inner_preds_labels_list, par_auc)
+      Brier_inner_ridge_list <- parLapply(cl, Brier_inner_preds_labels_list, par_brier)
+      PG_inner_ridge_list <- parLapply(cl, PG_inner_preds_labels_list, par_pg)
+      EMP_inner_ridge_list <- parLapply(cl, EMP_inner_preds_labels_list, par_emp)
+      
+      best_lambda_ridge_AUC <- glmnets_ridge[[1]]$lambda[which.max(AUC_inner_ridge_list)]
+      best_lambda_ridge_Brier <- glmnets_ridge[[2]]$lambda[which.min(Brier_inner_ridge_list)]
+      best_lambda_ridge_PG <- glmnets_ridge[[3]]$lambda[which.max(PG_inner_ridge_list)]
+      best_lambda_ridge_EMP <- glmnets_ridge[[4]]$lambda[which.max(EMP_inner_ridge_list)]
+      
+      penalty.factor_AUC <- coef(glmnets_ridge[[1]], s = best_lambda_ridge_AUC)
+      if (is.list(penalty.factor_AUC)) {
+        penalty.factor_AUC <- rowMeans(do.call(cbind, penalty.factor_AUC))
+        penalty.factor_AUC <- 1L / abs(as.numeric(penalty.factor_AUC)[
+          -which(names(penalty.factor_AUC) == "(Intercept)")])
+      } else {
+        penalty.factor_AUC <- 1L / abs(as.numeric(penalty.factor_AUC)[
+          -which(rownames(penalty.factor_AUC) == "(Intercept)")])
+      }
+
+      penalty.factor_Brier <- coef(glmnets_ridge[[2]], s = best_lambda_ridge_Brier)
+      if (is.list(penalty.factor_Brier)) {
+        penalty.factor_Brier <- rowMeans(do.call(cbind, penalty.factor_Brier))
+        penalty.factor_Brier <- 1L / abs(as.numeric(penalty.factor_Brier)[
+          -which(names(penalty.factor_Brier) == "(Intercept)")])
+      } else {
+        penalty.factor_Brier <- 1L / abs(as.numeric(penalty.factor_Brier)[
+          -which(rownames(penalty.factor_Brier) == "(Intercept)")])
+      }
+      
+      penalty.factor_PG <- coef(glmnets_ridge[[3]], s = best_lambda_ridge_PG)
+      if (is.list(penalty.factor_PG)) {
+        penalty.factor_PG <- rowMeans(do.call(cbind, penalty.factor_PG))
+        penalty.factor_PG <- 1L / abs(as.numeric(penalty.factor_PG)[
+          -which(names(penalty.factor_PG) == "(Intercept)")])
+      } else {
+        penalty.factor_PG <- 1L / abs(as.numeric(penalty.factor_PG)[
+          -which(rownames(penalty.factor_PG) == "(Intercept)")])
+      }
+      
+      penalty.factor_EMP <- coef(glmnets_ridge[[4]], s = best_lambda_ridge_EMP)
+      if (is.list(penalty.factor_EMP)) {
+        penalty.factor_EMP <- rowMeans(do.call(cbind, penalty.factor_EMP))
+        penalty.factor_EMP <- 1L / abs(as.numeric(penalty.factor_EMP)[
+          -which(names(penalty.factor_EMP) == "(Intercept)")])
+      } else {
+        penalty.factor_EMP <- 1L / abs(as.numeric(penalty.factor_EMP)[
+          -which(rownames(penalty.factor_EMP) == "(Intercept)")])
+      }
+      
+      glmnet.args <- list()
+      glmnet.args$y <- AUC_inner_SGL_table_train$label
+      glmnet.args$family <- 'binomial'
+      glmnet.args$parallel <- TRUE
+      glmnet.args$standardize <- FALSE
+      glmnet_AUC.args <- glmnet_Brier.args <- glmnet_PG.args <- glmnet_EMP.args <- glmnet.args
+      
+      
+      glmnet_AUC.args$alpha <- glmnet_Brier.args$alpha <- glmnet_PG.args$alpha <- glmnet_EMP.args$alpha <- 1
+      
+      glmnet_AUC.args$x <- AUC_inner_SGL_table_train%>%select(-label)
+      glmnet_Brier.args$x <- Brier_inner_SGL_table_train%>%select(-label)
+      glmnet_PG.args$x <- PG_inner_SGL_table_train%>%select(-label)
+      glmnet_EMP.args$x <- EMP_inner_SGL_table_train%>%select(-label)
+      
+      glmnet_AUC.args$penalty.factor <- penalty.factor_AUC
+      glmnet_Brier.args$penalty.factor <- penalty.factor_Brier
+      glmnet_PG.args$penalty.factor <- penalty.factor_PG
+      glmnet_EMP.args$penalty.factor <- penalty.factor_EMP
+      
+      glmnet.fit_AUC <- do.call(glmnet, glmnet_AUC.args)
+      glmnet.fit_Brier <- do.call(glmnet, glmnet_Brier.args)
+      glmnet.fit_PG <- do.call(glmnet, glmnet_PG.args)
+      glmnet.fit_EMP <- do.call(glmnet, glmnet_EMP.args)
+      
+      inner_lasso_preds_AUC <- predict(glmnet.fit_AUC, as.matrix(AUC_inner_SGL_table_test%>%select(-label)), type = "response")
+      inner_lasso_preds_Brier <- predict(glmnet.fit_Brier, as.matrix(Brier_inner_SGL_table_test%>%select(-label)), type = "response")
+      inner_lasso_preds_PG <- predict(glmnet.fit_PG, as.matrix(PG_inner_SGL_table_test%>%select(-label)), type = "response")
+      inner_lasso_preds_EMP <- predict(glmnet.fit_EMP, as.matrix(EMP_inner_SGL_table_test%>%select(-label)), type = "response")
+      
+      
+      AUC_inner_preds_labels_list <- lapply(1:ncol(inner_lasso_preds_AUC), function(i) {
+        list(preds = inner_lasso_preds_AUC[,i], labels = AUC_inner_SGL_table_test%>%select(label))
+      })
+      Brier_inner_preds_labels_list <- lapply(1:ncol(inner_lasso_preds_Brier), function(i) {
+        list(preds = inner_lasso_preds_Brier[,i], labels = Brier_inner_SGL_table_test%>%select(label))
+      })
+      PG_inner_preds_labels_list <- lapply(1:ncol(inner_lasso_preds_PG), function(i) {
+        list(preds = inner_lasso_preds_PG[,i], labels = PG_inner_SGL_table_test%>%select(label))
+      })
+      EMP_inner_preds_labels_list <- lapply(1:ncol(inner_lasso_preds_EMP), function(i) {
+        list(preds = inner_lasso_preds_EMP[,i], labels = EMP_inner_SGL_table_test%>%select(label))
+      })
+      
+
+      AUC_inner_lasso_list <- parLapply(cl, AUC_inner_preds_labels_list, par_auc)
+      Brier_inner_lasso_list <- parLapply(cl, Brier_inner_preds_labels_list, par_brier)
+      PG_inner_lasso_list <- parLapply(cl, PG_inner_preds_labels_list, par_pg)
+      EMP_inner_lasso_list <- parLapply(cl, EMP_inner_preds_labels_list, par_emp)
+      
+      best_lambda_lasso_AUC <- glmnet.fit_AUC$lambda[which.max(AUC_inner_lasso_list)]
+      best_lambda_lasso_Brier <- glmnet.fit_Brier$lambda[which.min(Brier_inner_lasso_list)]
+      best_lambda_lasso_PG <- glmnet.fit_PG$lambda[which.max(PG_inner_lasso_list)]
+      best_lambda_lasso_EMP <- glmnet.fit_EMP$lambda[which.max(EMP_inner_lasso_list)]
+
+      
+      
+    #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####        
    
       #######
       # Ridge for alasso
@@ -1056,6 +1259,161 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
       EMP_lambdas[nrow(EMP_lambdas) + 1,] = c(s, EMP)
     }
   } else {
+    
+    #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####
+    # cv.glmnet
+    #####
+    
+    AUC_SGL_table_train <- SRE_recipe_AUC %>%prep()%>% bake(training(SRE_split_AUC$splits[[1]]))
+    Brier_SGL_table_train <- SRE_recipe_Brier %>%prep()%>% bake(training(SRE_split_Brier$splits[[1]]))
+    PG_SGL_table_train <- SRE_recipe_PG %>%prep()%>% bake(training(SRE_split_PG$splits[[1]]))
+    EMP_SGL_table_train <- SRE_recipe_EMP %>%prep()%>% bake(training(SRE_split_EMP$splits[[1]]))      
+    
+    AUC_SGL_table_test <- SRE_recipe_AUC %>%prep()%>% bake(assessment(SRE_split_AUC$splits[[1]]))
+    Brier_SGL_table_test <- SRE_recipe_Brier %>%prep()%>% bake(assessment(SRE_split_Brier$splits[[1]]))
+    PG_SGL_table_test <- SRE_recipe_PG %>%prep()%>% bake(assessment(SRE_split_PG$splits[[1]]))
+    EMP_SGL_table_test <- SRE_recipe_EMP %>%prep()%>% bake(assessment(SRE_split_EMP$splits[[1]]))
+    
+    
+
+    glmnet.args <- list()
+    glmnet.args$y <- AUC_SGL_table_train$label
+    glmnet.args$family <- 'binomial'
+    glmnet.args$parallel <- TRUE
+    glmnet.args$standardize <- FALSE
+    glmnet.args$alpha <- 0
+    glmnet_AUC.args <- glmnet_Brier.args <- glmnet_PG.args <- glmnet_EMP.args <- glmnet.args
+    
+    
+    glmnet_AUC.args$x <- AUC_SGL_table_train%>%select(-label)
+    glmnet_Brier.args$x <- Brier_SGL_table_train%>%select(-label)
+    glmnet_PG.args$x <- PG_SGL_table_train%>%select(-label)
+    glmnet_EMP.args$x <- EMP_SGL_table_train%>%select(-label)
+
+    glmnet_AUC.args$lambda <- best_lambda_ridge_AUC
+    glmnet_Brier.args$lambda <- best_lambda_ridge_Brier
+    glmnet_PG.args$lambda <- best_lambda_ridge_PG
+    glmnet_EMP.args$lambda <- best_lambda_ridge_EMP
+    
+    glmnet.fit_AUC <- do.call(glmnet, glmnet_AUC.args)
+    glmnet.fit_Brier <- do.call(glmnet, glmnet_Brier.args)
+    glmnet.fit_PG <- do.call(glmnet, glmnet_PG.args)
+    glmnet.fit_EMP <- do.call(glmnet, glmnet_EMP.args)
+    
+
+    ridge_preds_AUC <- predict(glmnet.fit_AUC, as.matrix(AUC_SGL_table_test%>%select(-label)), type = "response")
+    ridge_preds_Brier <- predict(glmnet.fit_Brier, as.matrix(Brier_SGL_table_test%>%select(-label)), type = "response")
+    ridge_preds_PG <- predict(glmnet.fit_PG, as.matrix(PG_SGL_table_test%>%select(-label)), type = "response")
+    ridge_preds_EMP <- predict(glmnet.fit_EMP, as.matrix(EMP_SGL_table_test%>%select(-label)), type = "response")
+    
+    
+    penalty.factor_AUC <- coef(glmnet.fit_AUC, s = best_lambda_ridge_AUC)
+    if (is.list(penalty.factor_AUC)) {
+      penalty.factor_AUC <- rowMeans(do.call(cbind, penalty.factor_AUC))
+      penalty.factor_AUC <- 1L / abs(as.numeric(penalty.factor_AUC)[
+        -which(names(penalty.factor_AUC) == "(Intercept)")])
+    } else {
+      penalty.factor_AUC <- 1L / abs(as.numeric(penalty.factor_AUC)[
+        -which(rownames(penalty.factor_AUC) == "(Intercept)")])
+    }
+    
+    penalty.factor_Brier <- coef(glmnet.fit_Brier, s = best_lambda_ridge_Brier)
+    if (is.list(penalty.factor_Brier)) {
+      penalty.factor_Brier <- rowMeans(do.call(cbind, penalty.factor_Brier))
+      penalty.factor_Brier <- 1L / abs(as.numeric(penalty.factor_Brier)[
+        -which(names(penalty.factor_Brier) == "(Intercept)")])
+    } else {
+      penalty.factor_Brier <- 1L / abs(as.numeric(penalty.factor_Brier)[
+        -which(rownames(penalty.factor_Brier) == "(Intercept)")])
+    }
+    
+    penalty.factor_PG <- coef(glmnet.fit_PG, s = best_lambda_ridge_PG)
+    if (is.list(penalty.factor_PG)) {
+      penalty.factor_PG <- rowMeans(do.call(cbind, penalty.factor_PG))
+      penalty.factor_PG <- 1L / abs(as.numeric(penalty.factor_PG)[
+        -which(names(penalty.factor_PG) == "(Intercept)")])
+    } else {
+      penalty.factor_PG <- 1L / abs(as.numeric(penalty.factor_PG)[
+        -which(rownames(penalty.factor_PG) == "(Intercept)")])
+    }
+    
+    penalty.factor_EMP <- coef(glmnet.fit_EMP, s = best_lambda_ridge_EMP)
+    if (is.list(penalty.factor_EMP)) {
+      penalty.factor_EMP <- rowMeans(do.call(cbind, penalty.factor_EMP))
+      penalty.factor_EMP <- 1L / abs(as.numeric(penalty.factor_EMP)[
+        -which(names(penalty.factor_EMP) == "(Intercept)")])
+    } else {
+      penalty.factor_EMP <- 1L / abs(as.numeric(penalty.factor_EMP)[
+        -which(rownames(penalty.factor_EMP) == "(Intercept)")])
+    }
+    
+    glmnet.args <- list()
+    glmnet.args$y <- AUC_SGL_table_train$label
+    glmnet.args$family <- 'binomial'
+    glmnet.args$parallel <- TRUE
+    glmnet.args$standardize <- FALSE
+    glmnet.args$alpha <- 1
+    
+    glmnet_AUC.args <- glmnet_Brier.args <- glmnet_PG.args <- glmnet_EMP.args <- glmnet.args
+    
+    
+    glmnet_AUC.args$alpha <- glmnet_Brier.args$alpha <- glmnet_PG.args$alpha <- glmnet_EMP.args$alpha <- 1
+    
+    glmnet_AUC.args$x <- AUC_SGL_table_train%>%select(-label)
+    glmnet_Brier.args$x <- Brier_SGL_table_train%>%select(-label)
+    glmnet_PG.args$x <- PG_SGL_table_train%>%select(-label)
+    glmnet_EMP.args$x <- EMP_SGL_table_train%>%select(-label)
+    
+    glmnet_AUC.args$penalty.factor <- penalty.factor_AUC
+    glmnet_Brier.args$penalty.factor <- penalty.factor_Brier
+    glmnet_PG.args$penalty.factor <- penalty.factor_PG
+    glmnet_EMP.args$penalty.factor <- penalty.factor_EMP
+    
+    glmnet.fit_AUC <- do.call(glmnet, glmnet_AUC.args)
+    glmnet.fit_Brier <- do.call(glmnet, glmnet_Brier.args)
+    glmnet.fit_PG <- do.call(glmnet, glmnet_PG.args)
+    glmnet.fit_EMP <- do.call(glmnet, glmnet_EMP.args)
+    
+    lasso_preds_AUC <- predict(glmnet.fit_AUC, as.matrix(AUC_SGL_table_test%>%select(-label)), type = "response")
+    lasso_preds_Brier <- predict(glmnet.fit_Brier, as.matrix(Brier_SGL_table_test%>%select(-label)), type = "response")
+    lasso_preds_PG <- predict(glmnet.fit_PG, as.matrix(PG_SGL_table_test%>%select(-label)), type = "response")
+    lasso_preds_EMP <- predict(glmnet.fit_EMP, as.matrix(EMP_SGL_table_test%>%select(-label)), type = "response")
+    
+    
+    AUC_preds_labels_list <- lapply(1:ncol(lasso_preds_AUC), function(i) {
+      list(preds = lasso_preds_AUC[,i], labels = AUC_SGL_table_test%>%select(label))
+    })
+    Brier_preds_labels_list <- lapply(1:ncol(lasso_preds_Brier), function(i) {
+      list(preds = lasso_preds_Brier[,i], labels = Brier_SGL_table_test%>%select(label))
+    })
+    PG_preds_labels_list <- lapply(1:ncol(lasso_preds_PG), function(i) {
+      list(preds = lasso_preds_PG[,i], labels = PG_SGL_table_test%>%select(label))
+    })
+    EMP_preds_labels_list <- lapply(1:ncol(lasso_preds_EMP), function(i) {
+      list(preds = lasso_preds_EMP[,i], labels = EMP_SGL_table_test%>%select(label))
+    })
+    
+    
+    AUC_lasso_list <- parLapply(cl, AUC_preds_labels_list, par_auc)
+    Brier_lasso_list <- parLapply(cl, Brier_preds_labels_list, par_brier)
+    PG_lasso_list <- parLapply(cl, PG_preds_labels_list, par_pg)
+    EMP_lasso_list <- parLapply(cl, EMP_preds_labels_list, par_emp)
+    
+    best_lambda_lasso_AUC <- glmnet.fit_AUC$lambda[which.max(AUC_lasso_list)]
+    best_lambda_lasso_Brier <- glmnet.fit_Brier$lambda[which.min(Brier_lasso_list)]
+    best_lambda_lasso_PG <- glmnet.fit_PG$lambda[which.max(PG_lasso_list)]
+    best_lambda_lasso_EMP <- glmnet.fit_EMP$lambda[which.max(EMP_lasso_list)]
+    
+    
+    
+    #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####      #####        
+    
+    
+    
+    
+    
+    
+    
     #######
     # Fit initial ridge for alasso
     cat("fitting ridge\n")
