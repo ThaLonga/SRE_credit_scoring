@@ -1,8 +1,28 @@
 # to import model templates to make the main code simpler 
 #returns predictions
 
+#0.01 for FM, 0.1 for others
 get_splineworthy_columns <- function(X) {
   return((lapply(X, n_distinct)>(0.1*nrow(X))) & unlist(lapply(X, is.numeric)))
+}
+
+get_winsorizable_columns <- function(X) {
+  cols <- colnames(X)[
+    sapply(1:ncol(X), function(i) {
+      # Check if the column is numeric and has more than two unique values
+      if (is.numeric(X[, i]) && length(unique(X[, i])) > 2) {
+        quantiles <- quantile(X[, i], probs = c(0.025, 1 - 0.025), na.rm = TRUE)
+        quantiles[1] != quantiles[2]  # Check if quantile[1] != quantile[2]
+      } else {
+        FALSE  # Return FALSE for non-numeric or single-value columns
+      }
+    })
+  ]
+  
+  # Exclude column names that start with "s_"
+  cols <- cols[!grepl("^s\\(", cols)]
+  
+  return(setNames(colnames(X) %in% cols, colnames(X)))
 }
 
 #PG: cutoff = max probability of default

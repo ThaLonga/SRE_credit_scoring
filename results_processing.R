@@ -7,19 +7,27 @@ loaded_results <- load_results()
 loaded_results_PLTR <- load_results("results_supp")
 loaded_results_DB <- load_results("results_DB")
 datasets <- load_data()
-nr_datasets = 8
+nr_datasets = 9
 
 
-combined_results_AUC <- loaded_results[names(loaded_results) %>% grep("RF_AUC", .)] %>% 
+
+
+
+
+
+
+
+
+combined_results_AUC <- loaded_results[names(loaded_results) %>% grep("v2_AUC", .)] %>% 
   bind_rows() %>%
   select(-...1)  # Adjust the column name as necessary
-combined_results_Brier <- loaded_results[names(loaded_results) %>% grep("RF_BRIER", .)] %>% 
+combined_results_Brier <- loaded_results[names(loaded_results) %>% grep("v2_BRIER", .)] %>% 
   bind_rows() %>%
   select(-...1)  # Adjust the column name as necessary
-combined_results_PG <- loaded_results[names(loaded_results) %>% grep("RF_PG", .)] %>% 
+combined_results_PG <- loaded_results[names(loaded_results) %>% grep("v2_PG", .)] %>% 
   bind_rows() %>%
   select(-...1)  # Adjust the column name as necessary
-combined_results_EMP <- loaded_results[names(loaded_results) %>% grep("RF_EMP", .)] %>% 
+combined_results_EMP <- loaded_results[names(loaded_results) %>% grep("v2_EMP", .)] %>% 
   bind_rows() %>%
   select(-...1)  # Adjust the column name as necessary
 
@@ -28,8 +36,9 @@ combined_results_EMP <- loaded_results[names(loaded_results) %>% grep("RF_EMP", 
 #combined_results_Brier <- combined_results_Brier_DB_config
 #combined_results_PG <- combined_results_PG_DB_config
 
+#########################
 # tables for attachments:
-#####
+#########################
 combined_results_AUC_table <- combined_results_AUC %>%
   group_by(dataset, algorithm) %>%
   summarise(avg_metric = round(mean(metric), 3), sd_metric = round(sd(metric), 3)) %>%
@@ -83,10 +92,170 @@ finished_EMP_table <- combined_results_EMP_table %>%
   pivot_wider(names_from = dataset, values_from = EMP)
 
 kable(rbind(finished_AUC_table, finished_Brier_table, finished_PG_table, finished_EMP_table), "latex", booktabs = T)
-#####
+
+#########################
+# plots for attachments:
+#########################
+
+c15 <- c(
+  "brown", "#E31A1C", "#FF7F00", "orange", "gold1",
+   
+  "orchid1", "darkorchid2", "darkmagenta", 
+  "darkblue", "blue1", "dodgerblue3", "deepskyblue3", "darkturquoise","palegreen2","green3",
+  
+  "white", "white"
+)
+
+# AUC plot
+combined_results_AUC_plot <- combined_results_AUC%>%
+  group_by(dataset, algorithm) %>%
+  summarise(avg_metric = round(mean(metric), 3), sd_metric = round(sd(metric), 3)) %>%
+  ungroup() %>%
+  mutate_if(is.numeric, ~scales::number(., accuracy = 0.001))
+
+combined_results_AUC_plot$algorithm <- factor(combined_results_AUC_plot$algorithm, levels = unique(combined_results_AUC$algorithm))
+combined_results_AUC_plot$avg_metric <- as.numeric(combined_results_AUC_plot$avg_metric)
+
+combined_results_AUC_plot <- combined_results_AUC_plot %>%
+  add_row(dataset = unique(combined_results_AUC_plot$dataset),
+          algorithm = "spacer", avg_metric = 0) %>%
+  add_row(dataset = unique(combined_results_AUC_plot$dataset),
+          algorithm = "spacer1", avg_metric = 0)
+
+combined_results_AUC_plot$algorithm <- factor(combined_results_AUC_plot$algorithm,
+                                              levels = c(
+                                                "LRR", "GAM", "LDA", "CTREE", "PLTR", "spacer1", "RF", "XGB", 
+                                                "LGBM", "spacer", "RE_boosting", "RE_RF", "RE_bag",
+                                                "SRE_RF", "SRE_bag", "SRE_boosting", "SRE_PLTR"
+                                              ))
 
 
+
+ggplot(combined_results_AUC_plot, aes(x = dataset, y = avg_metric, fill = algorithm)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8)) +
+  labs(x = "Dataset", y = "AUC", fill = "Model") +
+  coord_cartesian(xlim = c(NA,NA), ylim = (c(0.5,1))) + 
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    text = element_text(size = 12)
+  ) +
+  scale_fill_manual(values = c15,
+                    breaks = setdiff(levels(combined_results_AUC_plot$algorithm), c("spacer", "spacer1")))
+
+# Brier plot
+combined_results_Brier_plot <- combined_results_Brier%>%
+  group_by(dataset, algorithm) %>%
+  summarise(avg_metric = round(mean(metric), 3), sd_metric = round(sd(metric), 3)) %>%
+  ungroup() %>%
+  mutate_if(is.numeric, ~scales::number(., accuracy = 0.001))
+
+combined_results_Brier_plot$algorithm <- factor(combined_results_Brier_plot$algorithm, levels = unique(combined_results_Brier$algorithm))
+combined_results_Brier_plot$avg_metric <- as.numeric(combined_results_Brier_plot$avg_metric)
+
+combined_results_Brier_plot <- combined_results_Brier_plot %>%
+  add_row(dataset = unique(combined_results_Brier_plot$dataset),
+          algorithm = "spacer", avg_metric = 0) %>%
+  add_row(dataset = unique(combined_results_Brier_plot$dataset),
+          algorithm = "spacer1", avg_metric = 0)
+
+combined_results_Brier_plot$algorithm <- factor(combined_results_Brier_plot$algorithm,
+                                              levels = c(
+                                                "LRR", "GAM", "LDA", "CTREE", "PLTR", "spacer1", "RF", "XGB", 
+                                                "LGBM", "spacer", "RE_boosting", "RE_RF", "RE_bag",
+                                                "SRE_RF", "SRE_bag", "SRE_boosting", "SRE_PLTR"
+                                              ))
+
+
+
+ggplot(combined_results_Brier_plot, aes(x = dataset, y = avg_metric, fill = algorithm)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8)) +
+  labs(x = "Dataset", y = "Brier", fill = "Model") +
+  coord_cartesian(xlim = c(NA,NA), ylim = (c(0, 0.3))) + 
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    text = element_text(size = 12)
+  ) +
+  scale_fill_manual(values = c15,
+                    breaks = setdiff(levels(combined_results_Brier_plot$algorithm), c("spacer", "spacer1")))
+
+###############
+###############
+# All comparisons
+###############
+###############
+
+if (!require("devtools")) {
+  install.packages("devtools")
+}
+
+devtools::install_github("b0rxa/scmamp")
+
+scmamp::friedmanPost(AUC_prep_rank[-1], control = "SRE_boosting")
+
+
+
+average_per_6_rows <- function(data) {
+  # Ensure the number of rows is divisible by 6
+  if (nrow(data) %% 6 != 0) {
+    stop("The number of rows in the data must be divisible by 6.")
+  }
+  
+  # Split the data into groups of 6 rows
+  group_indices <- rep(1:(nrow(data) / 6), each = 6)
+  
+  # Calculate column-wise averages for each group of 6 rows
+  averaged_data <- data %>%
+    group_by(group = group_indices) %>%
+    summarise(across(everything(), mean), .groups = "drop") %>%
+    select(-group) # Remove the grouping column
+  
+  return(as.data.frame(averaged_data))
+}
+
+
+
+
+
+
+
+
+
+ranks <- data.frame(matrix(NA,nrow=N,ncol=length(object)))
+colnames(ranks) <- names(object)
+for (i in 1:length(object)) ranks[,i] <- object[[i]]$foldsAUC
+for (i in 1:10) ranks[i,] <- rank(-ranks[i,],ties.method="average")
+
+ranks <- average_ranks_AUC %>% select(-average_metric) %>% pivot_wider(names_from = "algorithm", values_from = "average_rank")
+
+friedman.test(as.matrix(ranks[1:7, ]%>% select(-1)))
+
+
+# OR?
+friedman_data <- combined_results_AUC %>%
+  select(dataset, nr_fold, algorithm, metric) %>%
+  pivot_wider(names_from = algorithm, values_from = metric)
+
+# Print the reshaped data
+print(friedman_data)
+
+metric_matrix <- as.matrix(friedman_data[, -c(1, 2)])
+friedman_result <- friedman.test(metric_matrix)
+print(friedman_result)
+
+
+
+
+
+
+
+
+
+
+#########################
 # AvgRank calculation
+#########################
 
 average_ranks_AUC <- avg_ranks(combined_results_AUC)
 average_ranks_Brier <- avg_ranks(combined_results_Brier, direction = "min")
@@ -105,20 +274,25 @@ avg_ranks_summarized_EMP_latex<- xtable(avg_ranks_summarized_EMP)
 
 #kable(avg_ranks_summarized_AUC, "latex", booktabs = T)
 
-View(avg_ranks_summarized_AUC)
+View(avg_ranks_summarized_EMP)
 View(average_ranks_AUC)
 
+
+###############
 # Friedman test
+###############
+
 friedman_AUC <- average_ranks_AUC %>% convert_as_factor(dataset, algorithm) %>% dplyr::select(-average_metric) %>% friedman_test(average_rank ~ algorithm|dataset)
 friedman_Brier <- average_ranks_Brier %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
 friedman_PG <- average_ranks_PG %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
+friedman_EMP <- average_ranks_EMP %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
 
 
 #AUC pairwise friedman
 AUC_pairwise_p_values <- c()
 for(i in 1:nrow(avg_ranks_summarized_AUC)) {
   R_j <- min(avg_ranks_summarized_AUC$average_rank)
-  z <- friedman_pairwise(R_j, avg_ranks_summarized_AUC$average_rank[i], nrow(avg_ranks_summarized_AUC), nr_datasets)
+  z <- friedman_pairwise(R_j, avg_ranks_summarized_AUC$average_rank[i], N = nr_datasets, k = nrow(avg_ranks_summarized_AUC))
   AUC_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
 }
 AUC_pairwise_p_values_adjusted <- adjustRom(AUC_pairwise_p_values, alpha=0.05)
@@ -127,7 +301,7 @@ AUC_pairwise_p_values_adjusted <- adjustRom(AUC_pairwise_p_values, alpha=0.05)
 Brier_pairwise_p_values <- c()
 for(i in 1:nrow(avg_ranks_summarized_Brier)) {
   R_j <- min(avg_ranks_summarized_Brier$average_rank)
-  z <- friedman_pairwise(R_j, avg_ranks_summarized_Brier$average_rank[i], nrow(avg_ranks_summarized_Brier), nr_datasets)
+  z <- friedman_pairwise(R_j, avg_ranks_summarized_Brier$average_rank[i], N = nr_datasets, k = nrow(avg_ranks_summarized_Brier))
   Brier_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
 }
 Brier_pairwise_p_values_adjusted <- adjustRom(Brier_pairwise_p_values, alpha=0.05)
@@ -136,33 +310,225 @@ Brier_pairwise_p_values_adjusted <- adjustRom(Brier_pairwise_p_values, alpha=0.0
 PG_pairwise_p_values <- c()
 for(i in 1:nrow(avg_ranks_summarized_PG)) {
   R_j <- min(avg_ranks_summarized_PG$average_rank)
-  z <- friedman_pairwise(R_j, avg_ranks_summarized_PG$average_rank[i], nrow(avg_ranks_summarized_PG), nr_datasets)
+  z <- friedman_pairwise(R_j, avg_ranks_summarized_PG$average_rank[i], N = nr_datasets, k = nrow(avg_ranks_summarized_PG))
   PG_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
 }
 PG_pairwise_p_values_adjusted <- adjustRom(PG_pairwise_p_values, alpha=0.05)
 
+#EMP pairwise friedman
+EMP_pairwise_p_values <- c()
+for(i in 1:nrow(avg_ranks_summarized_EMP)) {
+  R_j <- min(avg_ranks_summarized_EMP$average_rank)
+  z <- friedman_pairwise(R_j, avg_ranks_summarized_EMP$average_rank[i], N = nr_datasets, k = nrow(avg_ranks_summarized_EMP))
+  EMP_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
+}
+EMP_pairwise_p_values_adjusted <- adjustRom(EMP_pairwise_p_values, alpha=0.05)
+
 #join to make table
-all_avg_ranks <- cbind(avg_ranks_summarized_AUC$algorithm, round(avg_ranks_summarized_AUC$average_rank, 2), round(avg_ranks_summarized_Brier$average_rank, 2), round(avg_ranks_summarized_PG$average_rank, 2)) %>% as_tibble()
-pairwise_p_values <- cbind(avg_ranks_summarized_AUC$algorithm, round(AUC_pairwise_p_values_adjusted, 3), round(Brier_pairwise_p_values_adjusted, 3), round(PG_pairwise_p_values_adjusted, 3)) %>% as_tibble()
+all_avg_ranks <- cbind(avg_ranks_summarized_AUC$algorithm, round(avg_ranks_summarized_AUC$average_rank, 2), round(avg_ranks_summarized_Brier$average_rank, 2), round(avg_ranks_summarized_PG$average_rank, 2), round(avg_ranks_summarized_EMP$average_rank, 2)) %>% as_tibble()
+pairwise_p_values <- cbind(avg_ranks_summarized_AUC$algorithm, round(AUC_pairwise_p_values_adjusted, 3), round(Brier_pairwise_p_values_adjusted, 3), round(PG_pairwise_p_values_adjusted, 3), round(EMP_pairwise_p_values_adjusted, 3)) %>% as_tibble()
 pairwise_p_values_brackets <- as.data.frame(mapply(paste, "(", pairwise_p_values, ")", MoreArgs = list(sep = "")))
 pairwise_p_values_brackets[1]<-NA
 
-table <- as.tibble(mapply(paste, all_avg_ranks, pairwise_p_values_brackets, MoreArgs = list(sep = " ")))
-table <- as.tibble(lapply(table, function(x) {
+table_pvalues <- as.tibble(mapply(paste, all_avg_ranks, pairwise_p_values_brackets, MoreArgs = list(sep = " ")))
+table_pvalues <- as.tibble(lapply(table_pvalues, function(x) {
   gsub(" NA", "", x)
 }))
-colnames(table) <- c("Algorithm", "AUC", "Brier", "PG")
-table_latex <- kable(table, "latex", booktabs = T)
+colnames(table_pvalues) <- c("Algorithm", "AUC", "Brier", "PG", "EMP")
+table_pvalues_latex <- format_p_values(kable(table_pvalues, "latex", booktabs = T))
 
-#####
+###########################################################################
+###########################################################################
+# Stepwise comparisons
+###########################################################################
+###########################################################################
+# RE -> select best -> compare with interpretable & compare with explainable
+
+RE_list <- c("RE_boosting", "RE_RF", "RE_bag", "SRE_boosting", "SRE_RF", "SRE_bag", "SRE_PLTR")
+interpretable_list <- c("LRR", "GAM", "LDA", "CTREE", "PLTR")
+explainable_list <- c("RF", "XGB", "LGBM")
+
+
+#########################
+# RE
+#########################
+
+# AvgRank calculation
+RE_list
+
+average_ranks_RE_AUC <- avg_ranks(combined_results_AUC%>%filter(algorithm %in% RE_list))
+average_ranks_RE_Brier <- avg_ranks(combined_results_Brier%>%filter(algorithm %in% RE_list), direction = "min")
+average_ranks_RE_PG <- avg_ranks(combined_results_PG%>%filter(algorithm %in% RE_list))
+average_ranks_RE_EMP <- avg_ranks(combined_results_EMP%>%filter(algorithm %in% RE_list))
+
+avg_ranks_RE_summarized_AUC <- avg_ranks_summarized(average_ranks_RE_AUC)
+avg_ranks_RE_summarized_Brier <- avg_ranks_summarized(average_ranks_RE_Brier)
+avg_ranks_RE_summarized_PG <- avg_ranks_summarized(average_ranks_RE_PG)
+avg_ranks_RE_summarized_EMP <- avg_ranks_summarized(average_ranks_RE_EMP)
+
+avg_ranks_RE_summarized_AUC_latex<- xtable(avg_ranks_RE_summarized_AUC)
+avg_ranks_RE_summarized_Brier_latex<- xtable(avg_ranks_RE_summarized_Brier)
+avg_ranks_RE_summarized_PG_latex<- xtable(avg_ranks_RE_summarized_PG)
+avg_ranks_RE_summarized_EMP_latex<- xtable(avg_ranks_RE_summarized_EMP)
+
+#kable(avg_ranks_summarized_AUC, "latex", booktabs = T)
+
+View(avg_ranks_RE_summarized_AUC)
+View(average_ranks_AUC)
+
+
+###############
+# Friedman test
+###############
+
+friedman_RE_AUC <- average_ranks_RE_AUC %>% convert_as_factor(dataset, algorithm) %>% dplyr::select(-average_metric) %>% friedman_test(average_rank ~ algorithm|dataset)
+friedman_RE_Brier <- average_ranks_RE_Brier %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
+friedman_RE_PG <- average_ranks_RE_PG %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
+friedman_RE_EMP <- average_ranks_RE_EMP %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
+
+
+#AUC pairwise friedman
+RE_AUC_pairwise_p_values <- c()
+for(i in 1:nrow(avg_ranks_RE_summarized_AUC)) {
+  R_j <- min(avg_ranks_RE_summarized_AUC$average_rank)
+  z <- friedman_pairwise(R_j, avg_ranks_RE_summarized_AUC$average_rank[i], N = nr_datasets, k = nrow(avg_ranks_RE_summarized_AUC))
+  RE_AUC_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
+}
+RE_AUC_pairwise_p_values_adjusted <- adjustRom(RE_AUC_pairwise_p_values, alpha=0.05)
+
+#Brier pairwise friedman
+RE_Brier_pairwise_p_values <- c()
+for(i in 1:nrow(avg_ranks_RE_summarized_Brier)) {
+  R_j <- min(avg_ranks_RE_summarized_Brier$average_rank)
+  z <- friedman_pairwise(R_j, avg_ranks_RE_summarized_Brier$average_rank[i], N = nr_datasets, k = nrow(avg_ranks_RE_summarized_Brier))
+  RE_Brier_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
+}
+RE_Brier_pairwise_p_values_adjusted <- adjustRom(RE_Brier_pairwise_p_values, alpha=0.05)
+
+#PG pairwise friedman
+RE_PG_pairwise_p_values <- c()
+for(i in 1:nrow(avg_ranks_RE_summarized_PG)) {
+  R_j <- min(avg_ranks_RE_summarized_PG$average_rank)
+  z <- friedman_pairwise(R_j, avg_ranks_RE_summarized_PG$average_rank[i], N = nr_datasets, k = nrow(avg_ranks_RE_summarized_PG))
+  RE_PG_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
+}
+RE_PG_pairwise_p_values_adjusted <- adjustRom(RE_PG_pairwise_p_values, alpha=0.05)
+
+#EMP pairwise friedman
+RE_EMP_pairwise_p_values <- c()
+for(i in 1:nrow(avg_ranks_RE_summarized_EMP)) {
+  R_j <- min(avg_ranks_RE_summarized_EMP$average_rank)
+  z <- friedman_pairwise(R_j, avg_ranks_RE_summarized_EMP$average_rank[i], N = nr_datasets, k = nrow(avg_ranks_RE_summarized_EMP))
+  RE_EMP_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
+}
+RE_EMP_pairwise_p_values_adjusted <- adjustRom(RE_EMP_pairwise_p_values, alpha=0.05)
+
+#join to make table
+RE_all_avg_ranks <- cbind(avg_ranks_RE_summarized_AUC$algorithm, round(avg_ranks_RE_summarized_AUC$average_rank, 2), round(avg_ranks_RE_summarized_Brier$average_rank, 2), round(avg_ranks_RE_summarized_PG$average_rank, 2), round(avg_ranks_RE_summarized_EMP$average_rank, 2)) %>% as_tibble()
+RE_pairwise_p_values <- cbind(avg_ranks_RE_summarized_AUC$algorithm, round(RE_AUC_pairwise_p_values_adjusted, 3), round(RE_Brier_pairwise_p_values_adjusted, 3), round(RE_PG_pairwise_p_values_adjusted, 3), round(RE_EMP_pairwise_p_values_adjusted, 3)) %>% as_tibble()
+RE_pairwise_p_values_brackets <- as.data.frame(mapply(paste, "(", RE_pairwise_p_values, ")", MoreArgs = list(sep = "")))
+RE_pairwise_p_values_brackets[1]<-NA
+
+RE_table_pvalues <- as.tibble(mapply(paste, RE_all_avg_ranks, RE_pairwise_p_values_brackets, MoreArgs = list(sep = " ")))
+RE_table_pvalues <- as.tibble(lapply(RE_table_pvalues, function(x) {
+  gsub(" NA", "", x)
+}))
+colnames(RE_table_pvalues) <- c("Algorithm", "AUC", "Brier", "PG", "EMP")
+RE_table_pvalues_latex <- format_p_values(kable(RE_table_pvalues, "latex", booktabs = T))
+
+#########################
+# interpretable
+#########################
+
+# AvgRank calculation
+average_ranks_I_AUC <- avg_ranks(combined_results_AUC%>%filter(algorithm %in% c(interpretable_list, "SRE_boosting")))
+average_ranks_I_Brier <- avg_ranks(combined_results_Brier%>%filter(algorithm %in% c(interpretable_list, "SRE_boosting")), direction = "min")
+average_ranks_I_PG <- avg_ranks(combined_results_PG%>%filter(algorithm %in% c(interpretable_list, "SRE_boosting")))
+average_ranks_I_EMP <- avg_ranks(combined_results_EMP%>%filter(algorithm %in% c(interpretable_list, "SRE_boosting")))
+
+avg_ranks_I_summarized_AUC <- avg_ranks_summarized(average_ranks_I_AUC)
+avg_ranks_I_summarized_Brier <- avg_ranks_summarized(average_ranks_I_Brier)
+avg_ranks_I_summarized_PG <- avg_ranks_summarized(average_ranks_I_PG)
+avg_ranks_I_summarized_EMP <- avg_ranks_summarized(average_ranks_I_EMP)
+
+avg_ranks_I_summarized_AUC_latex<- xtable(avg_ranks_I_summarized_AUC)
+avg_ranks_I_summarized_Brier_latex<- xtable(avg_ranks_I_summarized_Brier)
+avg_ranks_I_summarized_PG_latex<- xtable(avg_ranks_I_summarized_PG)
+avg_ranks_I_summarized_EMP_latex<- xtable(avg_ranks_I_summarized_EMP)
+
+#kable(avg_ranks_summarized_AUC, "latex", booktabs = T)
+
+
+###############
+# Friedman test
+###############
+
+friedman_I_AUC <- average_ranks_I_AUC %>% convert_as_factor(dataset, algorithm) %>% dplyr::select(-average_metric) %>% friedman_test(average_rank ~ algorithm|dataset)
+friedman_I_Brier <- average_ranks_I_Brier %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
+friedman_I_PG <- average_ranks_I_PG %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
+friedman_I_EMP <- average_ranks_I_EMP %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
+
+
+#AUC pairwise friedman
+I_AUC_pairwise_p_values <- c()
+for(i in 1:nrow(avg_ranks_I_summarized_AUC)) {
+  R_j <- min(avg_ranks_I_summarized_AUC$average_rank)
+  z <- friedman_pairwise(R_j, avg_ranks_I_summarized_AUC$average_rank[i], N = nr_datasets, k = nrow(avg_ranks_I_summarized_AUC))
+  I_AUC_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
+}
+I_AUC_pairwise_p_values_adjusted <- adjustRom(I_AUC_pairwise_p_values, alpha=0.05)
+
+#Brier pairwise friedman
+I_Brier_pairwise_p_values <- c()
+for(i in 1:nrow(avg_ranks_I_summarized_Brier)) {
+  R_j <- min(avg_ranks_I_summarized_Brier$average_rank)
+  z <- friedman_pairwise(R_j, avg_ranks_I_summarized_Brier$average_rank[i], N = nr_datasets, k = nrow(avg_ranks_I_summarized_Brier))
+  I_Brier_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
+}
+I_Brier_pairwise_p_values_adjusted <- adjustRom(I_Brier_pairwise_p_values, alpha=0.05)
+
+#PG pairwise friedman
+I_PG_pairwise_p_values <- c()
+for(i in 1:nrow(avg_ranks_I_summarized_PG)) {
+  R_j <- min(avg_ranks_I_summarized_PG$average_rank)
+  z <- friedman_pairwise(R_j, avg_ranks_I_summarized_PG$average_rank[i], N = nr_datasets, k = nrow(avg_ranks_I_summarized_PG))
+  I_PG_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
+}
+I_PG_pairwise_p_values_adjusted <- adjustRom(I_PG_pairwise_p_values, alpha=0.05)
+
+#EMP pairwise friedman
+I_EMP_pairwise_p_values <- c()
+for(i in 1:nrow(avg_ranks_I_summarized_EMP)) {
+  R_j <- min(avg_ranks_I_summarized_EMP$average_rank)
+  z <- friedman_pairwise(R_j, avg_ranks_I_summarized_EMP$average_rank[i], N = nr_datasets, k = nrow(avg_ranks_I_summarized_EMP))
+  I_EMP_pairwise_p_values[i] <- pnorm(z, lower.tail = FALSE)*2
+}
+I_EMP_pairwise_p_values_adjusted <- adjustRom(I_EMP_pairwise_p_values, alpha=0.05)
+
+#join to make table
+I_all_avg_ranks <- cbind(avg_ranks_I_summarized_AUC$algorithm, round(avg_ranks_I_summarized_AUC$average_rank, 2), round(avg_ranks_I_summarized_Brier$average_rank, 2), round(avg_ranks_I_summarized_PG$average_rank, 2), round(avg_ranks_I_summarized_EMP$average_rank, 2)) %>% as_tibble()
+I_pairwise_p_values <- cbind(avg_ranks_I_summarized_AUC$algorithm, round(I_AUC_pairwise_p_values_adjusted, 3), round(I_Brier_pairwise_p_values_adjusted, 3), round(I_PG_pairwise_p_values_adjusted, 3), round(I_EMP_pairwise_p_values_adjusted, 3)) %>% as_tibble()
+I_pairwise_p_values_brackets <- as.data.frame(mapply(paste, "(", I_pairwise_p_values, ")", MoreArgs = list(sep = "")))
+I_pairwise_p_values_brackets[1]<-NA
+
+I_table_pvalues <- as.tibble(mapply(paste, I_all_avg_ranks, I_pairwise_p_values_brackets, MoreArgs = list(sep = " ")))
+I_table_pvalues <- as.tibble(lapply(I_table_pvalues, function(x) {
+  gsub(" NA", "", x)
+}))
+colnames(I_table_pvalues) <- c("Algorithm", "AUC", "Brier", "PG", "EMP")
+I_table_pvalues_latex <- format_p_values(kable(I_table_pvalues, "latex", booktabs = T))
+
+
+#######################################################
 # Bayesian signed rank test (Benavoli et al., 2017)
+#######################################################
 combined_results_AUC$group <- paste(combined_results_AUC$dataset, combined_results_AUC$nr_fold)
 AUC_prep_rank <- combined_results_AUC %>% dplyr::select(group, algorithm, metric) %>% pivot_wider(names_from = algorithm, values_from = metric) %>% rename("id" = group)
 AUC_bayes <- perf_mod(AUC_prep_rank,
                       iter = 50000,
                       seed = 42)
 
-AUC_SRE_RE <- contrast_models(AUC_bayes, c(rep('SRE_boosting',4), rep('RE_boosting', 4)), rep(c('LRR', 'RF', 'RE_boosting', 'SRE_boosting'),2))
+AUC_SRE_RE <- contrast_models(AUC_bayes, c(rep('SRE_boosting',5), rep('RE_boosting', 5), rep('RE_RF',5)), rep(c('LRR', 'RF', 'RE_boosting', 'SRE_boosting', 'RE_RF'),3))
 autoplot(AUC_SRE_RE, size = 0.01)
 summary(AUC_SRE_RE, size = 0.01) %>% 
   dplyr::select(contrast, starts_with("pract"))
