@@ -9,7 +9,7 @@ p_load(glmnet, glmnetUtils, mgcv, MASS, tidyverse, xgboost, DiagrammeR, stringr,
 
 
 # EMP toevoegen: EMP package
-
+setwd("./github/SRE_credit_scoring")
 source("./src/misc.R")
 source("./src/pre.R")
 source("./src/SRE.R")
@@ -46,7 +46,7 @@ predictions <- list()
 
 dataset_counter = 1
 
-for(dataset in datasets[9]) {
+for(dataset in datasets[1]) {
   
   #subsampling
   set.seed(111)
@@ -246,7 +246,7 @@ for(dataset in datasets[9]) {
       stringr::str_sub(paste("label ~", 
                              paste(ifelse(names(train_processed%>%dplyr::select(-label)) %in% smooth_vars, "s(", ""),
                                    names(train_processed%>%dplyr::select(-label)),
-                                   ifelse(names(train_processed%>%dplyr::select(-label)) %in% smooth_vars, ")",""),
+                                   ifelse(names(train_processed%>%dplyr::select(-label)) %in% smooth_vars, ", bs=\"cr\" )",""),
                                    collapse = " + ")
       ), 0, -1)
     )
@@ -828,21 +828,6 @@ for(dataset in datasets[9]) {
     AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE_RF", AUC)
     
     #Brier
-#    RE_model_RF_Brier <- train(XGB_recipe, data = train, method = "pre",
-#                            ntrees = 100, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
-#                            tuneGrid = getModelInfo("pre")[[1]]$grid( 
-#                              maxdepth = (RE_model_RF$results%>%slice_min(Brier)%>%dplyr::select(maxdepth))[[1]][1],
-#                              penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
-#                              sampfrac = 1,
-#                              mtry = (RE_model_RF$results%>%slice_min(Brier)%>%dplyr::select(mtry))[[1]][1],
-#                              use.grad = FALSE),
-#                            ad.alpha = 0, #tree.unbiased = FALSE, 
-#                            singleconditions = FALSE,
-#                            winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
-#                            verbose = TRUE,
-#                            allowParallel = TRUE,
-#                            par.init=TRUE,
-#                            par.final=TRUE)
     RE_preds_RF <- data.frame("X1"=predict(RE_model_RF_Brier, test_bake, type = 'response'))
     RE_preds_RF$label <- test$label
     
@@ -853,20 +838,6 @@ for(dataset in datasets[9]) {
     Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE_RF", brier)
     
     #PG
-    RE_model_RF_PG <- train(XGB_recipe, data = train, method = "pre",
-                            ntrees = 100, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
-                            tuneGrid = getModelInfo("pre")[[1]]$grid( 
-                              maxdepth = (RE_model_RF$results%>%slice_max(partialGini)%>%dplyr::select(maxdepth))[[1]][1],
-                              penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
-                              sampfrac = 1,
-                              mtry = (RE_model_RF$results%>%slice_max(partialGini)%>%dplyr::select(mtry))[[1]][1],
-                              use.grad = TRUE), ad.alpha = 0, #tree.unbiased = FALSE, 
-                            singleconditions = FALSE,
-                            winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
-                            verbose = TRUE,
-                            metric = "AUCROC", allowParallel = TRUE,
-                            par.init=TRUE,
-                            par.final=TRUE)
     RE_preds_RF <- data.frame("X1"=predict(RE_model_RF_PG, test_bake, type = 'response'))
     RE_preds_RF$label <- test$label
     
@@ -877,21 +848,6 @@ for(dataset in datasets[9]) {
     PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "RE_RF", pg)
     
     #EMP
-    RE_RF_EMP_params <- select_best_emp_RE_RF(RE_model_RF)
-    RE_model_RF_EMP <- train(XGB_recipe, data = train, method = "pre",
-                            ntrees = 100, family = "binomial", trControl = trainControl(method = "none", classProbs = TRUE),
-                            tuneGrid = getModelInfo("pre")[[1]]$grid( 
-                              maxdepth = (RE_RF_EMP_params%>%dplyr::select(maxdepth))[[1]][1],
-                              penalty.par.val = c("lambda.min"), # λand γ combination yielding the sparsest solution within 1 standard error of the error criterion of the minimum is returned
-                              sampfrac = 1,
-                              mtry = (RE_RF_EMP_params%>%dplyr::select(mtry))[[1]][1],
-                              use.grad = TRUE), ad.alpha = 0, #tree.unbiased = FALSE, 
-                            singleconditions = FALSE,
-                            winsfrac = 0.05, normalize = TRUE, #same a priori influence as a typical rule
-                            verbose = TRUE,
-                            metric = "AUCROC", allowParallel = TRUE,
-                            par.init=TRUE,
-                            par.final=TRUE)
     RE_preds_RF <- data.frame("X1"=predict(RE_model_RF_EMP, test_bake, type = 'response'))
     RE_preds_RF$label <- test$label
     
