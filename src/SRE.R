@@ -1015,10 +1015,10 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
       SRE_test_EMP <- cbind(test_bake, fitted_smooths_test)
     }
   
-  } else if(identical(regularization, "SGL")) {
-    if(!is.null(RE_model_AUC$finalModel$rules)) {
-      SRE_train_rules_AUC <- fit_rules_SGL(train_bake, drop_na(tibble(rules = RE_model_AUC$finalModel$rules$description))$rules)
-      SRE_test_rules_AUC <- fit_rules_SGL(test_bake, drop_na(tibble(rules = RE_model_AUC$finalModel$rules$description))$rules)
+  } else if(identical(tree_algorithm, "randomforest")) {
+    if(!is.null(RE_model_AUC$rules)) {
+      SRE_train_rules_AUC <- fit_rules(train_bake, drop_na(tibble(rules = RE_model_AUC$rules$description))$rules)
+      SRE_test_rules_AUC <- fit_rules(test_bake, drop_na(tibble(rules = RE_model_AUC$rules$description))$rules)
       
       SRE_train_AUC <- cbind(SRE_train_rules_AUC, fitted_smooths_train)
       SRE_test_AUC <- cbind(SRE_test_rules_AUC, fitted_smooths_test)
@@ -1026,9 +1026,9 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
       SRE_train_AUC <- cbind(train_bake, fitted_smooths_train)
       SRE_test_AUC <- cbind(test_bake, fitted_smooths_test)
     }
-    if(!is.null(RE_model_Brier$finalModel$rules)) {
-      SRE_train_rules_Brier <- fit_rules_SGL(train_bake, drop_na(tibble(rules = RE_model_Brier$finalModel$rules$description))$rules)
-      SRE_test_rules_Brier<- fit_rules_SGL(test_bake, drop_na(tibble(rules = RE_model_Brier$finalModel$rules$description))$rules)
+    if(!is.null(RE_model_Brier$rules)) {
+      SRE_train_rules_Brier <- fit_rules(train_bake, drop_na(tibble(rules = RE_model_Brier$rules$description))$rules)
+      SRE_test_rules_Brier<- fit_rules(test_bake, drop_na(tibble(rules = RE_model_Brier$rules$description))$rules)
       
       SRE_train_Brier <- cbind(SRE_train_rules_Brier, fitted_smooths_train)
       SRE_test_Brier <- cbind(SRE_test_rules_Brier, fitted_smooths_test)
@@ -1036,9 +1036,9 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
       SRE_train_Brier <- cbind(train_bake, fitted_smooths_train)
       SRE_test_Brier <- cbind(test_bake, fitted_smooths_test)
     }
-    if(!is.null(RE_model_PG$finalModel$rules)) {
-      SRE_train_rules_PG <- fit_rules_SGL(train_bake, drop_na(tibble(rules = RE_model_PG$finalModel$rules$description))$rules)
-      SRE_test_rules_PG <- fit_rules_SGL(test_bake, drop_na(tibble(rules = RE_model_PG$finalModel$rules$description))$rules)
+    if(!is.null(RE_model_PG$rules)) {
+      SRE_train_rules_PG <- fit_rules(train_bake, drop_na(tibble(rules = RE_model_PG$rules$description))$rules)
+      SRE_test_rules_PG <- fit_rules(test_bake, drop_na(tibble(rules = RE_model_PG$rules$description))$rules)
       
       SRE_train_PG <- cbind(SRE_train_rules_PG, fitted_smooths_train)
       SRE_test_PG <- cbind(SRE_test_rules_PG, fitted_smooths_test)
@@ -1046,9 +1046,9 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
       SRE_train_PG <- cbind(train_bake, fitted_smooths_train)
       SRE_test_PG <- cbind(test_bake, fitted_smooths_test)
     }
-    if(!is.null(RE_model_EMP$finalModel$rules)) {
-      SRE_train_rules_EMP <- fit_rules_SGL(train_bake, drop_na(tibble(rules = RE_model_EMP$finalModel$rules$description))$rules)
-      SRE_test_rules_EMP <- fit_rules_SGL(test_bake, drop_na(tibble(rules = RE_model_EMP$finalModel$rules$description))$rules)
+    if(!is.null(RE_model_EMP$rules)) {
+      SRE_train_rules_EMP <- fit_rules(train_bake, drop_na(tibble(rules = RE_model_EMP$rules$description))$rules)
+      SRE_test_rules_EMP <- fit_rules(test_bake, drop_na(tibble(rules = RE_model_EMP$rules$description))$rules)
       
       SRE_train_EMP <- cbind(SRE_train_rules_EMP, fitted_smooths_train)
       SRE_test_EMP <- cbind(SRE_test_rules_EMP, fitted_smooths_test)
@@ -1108,10 +1108,10 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
   
   ####### 
   # Only winsorize numeric features with more than 6 values
-  winsorizable_AUC <- get_splineworthy_columns(SRE_train_AUC)
-  winsorizable_Brier <- get_splineworthy_columns(SRE_train_Brier)
-  winsorizable_PG <- get_splineworthy_columns(SRE_train_PG)
-  winsorizable_EMP <- get_splineworthy_columns(SRE_train_EMP)
+  winsorizable_AUC <- get_winsorizable_columns(SRE_train_AUC)
+  winsorizable_Brier <- get_winsorizable_columns(SRE_train_Brier)
+  winsorizable_PG <- get_winsorizable_columns(SRE_train_PG)
+  winsorizable_EMP <- get_winsorizable_columns(SRE_train_EMP)
   
   #######
   # Manually create Rsample splits again, now with the splines and rules added
@@ -1131,41 +1131,33 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
   
   ####### 
   # Create recipes, for AUC, Brier and PG
-  normalizable_AUC <- colnames(training(SRE_split_AUC$splits[[1]])[unlist(lapply(training(SRE_split_AUC$splits[[1]]), function(x) n_distinct(x)>2))])
-  normalizable_Brier <- colnames(training(SRE_split_Brier$splits[[1]])[unlist(lapply(training(SRE_split_Brier$splits[[1]]), function(x) n_distinct(x)>2))])
-  normalizable_PG <- colnames(training(SRE_split_PG$splits[[1]])[unlist(lapply(training(SRE_split_PG$splits[[1]]), function(x) n_distinct(x)>2))])
-  normalizable_EMP <- colnames(training(SRE_split_EMP$splits[[1]])[unlist(lapply(training(SRE_split_EMP$splits[[1]]), function(x) n_distinct(x)>2))])
-  
+
   SRE_recipe_AUC <- recipe(label~., data = training(SRE_split_AUC$splits[[1]])) %>%
     step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_AUC$splits[[1]]))[!!winsorizable_AUC]), fraction = 0.025) %>%
     step_rm(all_of(names(!!training(SRE_split_AUC$splits[[1]]))[!!winsorizable_AUC])) %>%
-    step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
+    step_mutate_at(all_numeric_predictors(), fn = ~0.4 * ./ sd(.)) %>%
     step_mutate(across(where(is.logical), as.integer)) %>%
-    step_normalize(all_of(setdiff(!!normalizable_AUC, colnames(!!training(SRE_split_AUC$splits[[1]])[!!winsorizable_AUC])))) %>%
     step_zv()
   
   SRE_recipe_Brier <- recipe(label~., data = training(SRE_split_Brier$splits[[1]])) %>%
     step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_Brier$splits[[1]]))[!!winsorizable_Brier]), fraction = 0.025) %>%
     step_rm(all_of(names(!!training(SRE_split_Brier$splits[[1]]))[!!winsorizable_Brier])) %>%
-    step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
+    step_mutate_at(all_numeric_predictors(), fn = ~0.4 * ./ sd(.)) %>%
     step_mutate(across(where(is.logical), as.integer)) %>%
-    step_normalize(all_of(setdiff(!!normalizable_Brier, colnames(!!training(SRE_split_Brier$splits[[1]])[!!winsorizable_Brier])))) %>%
     step_zv()
   
   SRE_recipe_PG <- recipe(label~., data = training(SRE_split_PG$splits[[1]])) %>%
     step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_PG$splits[[1]]))[!!winsorizable_PG]), fraction = 0.025) %>%
     step_rm(all_of(names(!!training(SRE_split_PG$splits[[1]]))[!!winsorizable_PG])) %>%
-    step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
+    step_mutate_at(all_numeric_predictors(), fn = ~0.4 * ./ sd(.)) %>%
     step_mutate(across(where(is.logical), as.integer)) %>%
-    step_normalize(all_of(setdiff(!!normalizable_PG, colnames(!!training(SRE_split_PG$splits[[1]])[!!winsorizable_PG])))) %>%
     step_zv()
   
   SRE_recipe_EMP <- recipe(label~., data = training(SRE_split_EMP$splits[[1]])) %>%
     step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_EMP$splits[[1]]))[!!winsorizable_EMP]), fraction = 0.025) %>%
     step_rm(all_of(names(!!training(SRE_split_EMP$splits[[1]]))[!!winsorizable_EMP])) %>%
-    step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
+    step_mutate_at(all_numeric_predictors(), fn = ~0.4 * ./ sd(.)) %>%
     step_mutate(across(where(is.logical), as.integer)) %>%
-    step_normalize(all_of(setdiff(!!normalizable_EMP, colnames(!!training(SRE_split_EMP$splits[[1]])[!!winsorizable_EMP])))) %>%
     step_zv()
   
   
@@ -1183,10 +1175,10 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
     PG_SGL_table_test <- SRE_recipe_PG %>%prep()%>% bake(assessment(SRE_split_PG$splits[[1]]))
     EMP_SGL_table_test <- SRE_recipe_EMP %>%prep()%>% bake(assessment(SRE_split_EMP$splits[[1]]))
     
-    AUC_SGL_table_train_x <- AUC_SGL_table_train %>% select(-label)
-    Brier_SGL_table_train_x <- Brier_SGL_table_train %>% select(-label)
-    PG_SGL_table_train_x <- PG_SGL_table_train %>% select(-label)
-    EMP_SGL_table_train_x <- EMP_SGL_table_train %>% select(-label)
+    AUC_SGL_table_train_x <- AUC_SGL_table_train %>% dplyr::select(-label)
+    Brier_SGL_table_train_x <- Brier_SGL_table_train %>% dplyr::select(-label)
+    PG_SGL_table_train_x <- PG_SGL_table_train %>% dplyr::select(-label)
+    EMP_SGL_table_train_x <- EMP_SGL_table_train %>% dplyr::select(-label)
     
     AUC_groups <- group_terms_by_variables(names(AUC_SGL_table_train_x), names(train))
     Brier_groups <- group_terms_by_variables(names(Brier_SGL_table_train_x), names(train))
