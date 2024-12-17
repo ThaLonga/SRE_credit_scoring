@@ -18,18 +18,18 @@ nr_datasets = 9
 
 
 
-combined_results_AUC <- loaded_results[names(loaded_results) %>% grep("v2_AUC", .)] %>% 
+combined_results_AUC <- loaded_results[names(loaded_results) %>% grep("v2_AUC_glmnet", .)] %>% 
   bind_rows() %>%
-  select(-...1)  # Adjust the column name as necessary
-combined_results_Brier <- loaded_results[names(loaded_results) %>% grep("v2_BRIER", .)] %>% 
+  dplyr::select(-...1)  # Adjust the column name as necessary
+combined_results_Brier <- loaded_results[names(loaded_results) %>% grep("v2_BRIER_glmnet", .)] %>% 
   bind_rows() %>%
-  select(-...1)  # Adjust the column name as necessary
-combined_results_PG <- loaded_results[names(loaded_results) %>% grep("v2_PG", .)] %>% 
+  dplyr::select(-...1)  # Adjust the column name as necessary
+combined_results_PG <- loaded_results[names(loaded_results) %>% grep("v2_PG_glmnet", .)] %>% 
   bind_rows() %>%
-  select(-...1)  # Adjust the column name as necessary
-combined_results_EMP <- loaded_results[names(loaded_results) %>% grep("v2_EMP", .)] %>% 
+  dplyr::select(-...1)  # Adjust the column name as necessary
+combined_results_EMP <- loaded_results[names(loaded_results) %>% grep("v2_EMP_glmnet", .)] %>% 
   bind_rows() %>%
-  select(-...1)  # Adjust the column name as necessary
+  dplyr::select(-...1)  # Adjust the column name as necessary
 
 #For no duplicate code
 #combined_results_AUC <- combined_results_AUC_DB_config
