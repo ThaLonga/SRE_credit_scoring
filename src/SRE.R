@@ -935,28 +935,28 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
   SRE_recipe_AUC <- recipe(label~., data = training(SRE_split_AUC$splits[[1]])) %>%
     step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_AUC$splits[[1]]))[!!winsorizable_AUC]), fraction = 0.025) %>%
     step_rm(all_of(names(!!training(SRE_split_AUC$splits[[1]]))[!!winsorizable_AUC])) %>%
-    step_mutate_at(all_numeric_predictors(), fn = ~0.4 * ./ sd(.)) %>%
+    step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>% 
     step_mutate(across(where(is.logical), as.integer)) %>%
     step_zv()
   
   SRE_recipe_Brier <- recipe(label~., data = training(SRE_split_Brier$splits[[1]])) %>%
     step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_Brier$splits[[1]]))[!!winsorizable_Brier]), fraction = 0.025) %>%
     step_rm(all_of(names(!!training(SRE_split_Brier$splits[[1]]))[!!winsorizable_Brier])) %>%
-    step_mutate_at(all_numeric_predictors(), fn = ~0.4 * ./ sd(.)) %>%
+    step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>% 
     step_mutate(across(where(is.logical), as.integer)) %>%
     step_zv()
   
   SRE_recipe_PG <- recipe(label~., data = training(SRE_split_PG$splits[[1]])) %>%
     step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_PG$splits[[1]]))[!!winsorizable_PG]), fraction = 0.025) %>%
     step_rm(all_of(names(!!training(SRE_split_PG$splits[[1]]))[!!winsorizable_PG])) %>%
-    step_mutate_at(all_numeric_predictors(), fn = ~0.4 * ./ sd(.)) %>%
+    step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>% 
     step_mutate(across(where(is.logical), as.integer)) %>%
     step_zv()
   
   SRE_recipe_EMP <- recipe(label~., data = training(SRE_split_EMP$splits[[1]])) %>%
     step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_EMP$splits[[1]]))[!!winsorizable_EMP]), fraction = 0.025) %>%
     step_rm(all_of(names(!!training(SRE_split_EMP$splits[[1]]))[!!winsorizable_EMP])) %>%
-    step_mutate_at(all_numeric_predictors(), fn = ~0.4 * ./ sd(.)) %>%
+    step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>% 
     step_mutate(across(where(is.logical), as.integer)) %>%
     step_zv()
   
@@ -1105,7 +1105,7 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
     SRE_wf_ridge_emp <- workflow() %>%
       #add_formula(label~.) %>%
       add_recipe(SRE_recipe_EMP) %>%
-      add_model(SRE_model_ridge_emp)    
+      add_model(SRE_model_ridge_emp)  
     
     
     final_ridge_fit_auc <- SRE_wf_ridge_auc %>% last_fit(SRE_split_AUC$splits[[1]], metrics = metrics)
