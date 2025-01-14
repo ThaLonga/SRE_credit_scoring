@@ -1,4 +1,4 @@
-dataset,nr_fold,algorithm,metric.x
+dataset,nr_fold,algorithm,metric
 AC,1,LRR,0.0968321796382466
 AC,1,GAM,0.106549653854105
 AC,1,LDA,0.0987090861812177
