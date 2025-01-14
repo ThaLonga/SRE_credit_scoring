@@ -18,18 +18,23 @@ nr_datasets = 9
 
 
 
-combined_results_AUC <- loaded_results[names(loaded_results) %>% grep("v2_AUC_glmnet", .)] %>% 
+combined_results_AUC <- loaded_results[names(loaded_results) %>% grep("v2_AUC_boost_rerun_newpre", .)] %>% 
   bind_rows() %>%
-  dplyr::select(-...1)  # Adjust the column name as necessary
-combined_results_Brier <- loaded_results[names(loaded_results) %>% grep("v2_BRIER_glmnet", .)] %>% 
+  dplyr::select(-...1) %>% 
+  dplyr::filter(algorithm!="XGB")
+
+combined_results_Brier <- loaded_results[names(loaded_results) %>% grep("v2_BRIER_boost_rerun_newpre", .)] %>% 
   bind_rows() %>%
-  dplyr::select(-...1)  # Adjust the column name as necessary
-combined_results_PG <- loaded_results[names(loaded_results) %>% grep("v2_PG_glmnet", .)] %>% 
+  dplyr::select(-...1)  %>% 
+  dplyr::filter(algorithm!="XGB")
+combined_results_PG <- loaded_results[names(loaded_results) %>% grep("v2_PG_boost_rerun_newpre", .)] %>% 
   bind_rows() %>%
-  dplyr::select(-...1)  # Adjust the column name as necessary
-combined_results_EMP <- loaded_results[names(loaded_results) %>% grep("v2_EMP_glmnet", .)] %>% 
+  dplyr::select(-...1)  %>% 
+  dplyr::filter(algorithm!="XGB")
+combined_results_EMP <- loaded_results[names(loaded_results) %>% grep("v2_EMP_boost_rerun_newpre", .)] %>% 
   bind_rows() %>%
-  dplyr::select(-...1)  # Adjust the column name as necessary
+  dplyr::select(-...1)  %>% 
+  dplyr::filter(algorithm!="XGB")
 
 #For no duplicate code
 #combined_results_AUC <- combined_results_AUC_DB_config
@@ -43,7 +48,7 @@ combined_results_AUC_table <- combined_results_AUC %>%
   group_by(dataset, algorithm) %>%
   summarise(avg_metric = round(mean(metric), 3), sd_metric = round(sd(metric), 3)) %>%
   ungroup() %>%
-  mutate_if(is.numeric, ~scales::number(., accuracy = 0.001))
+  mutate_if(is.numeric, ~scales::number(., accuracy = 0.001)) 
 
 combined_results_AUC_table$sd_brackets <- mapply(paste, "(", combined_results_AUC_table$sd_metric, ")", MoreArgs = list(sep = ""))
 combined_results_AUC_table$AUC <- mapply(paste, combined_results_AUC_table$avg_metric, combined_results_AUC_table$sd_brackets, MoreArgs = list(sep = " "))
