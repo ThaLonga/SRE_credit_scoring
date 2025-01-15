@@ -3,7 +3,7 @@
 
 #0.01 for FM, 0.1 for others
 get_splineworthy_columns <- function(X) {
-  return((lapply(X, n_distinct)>(0.1*nrow(X))) & unlist(lapply(X, is.numeric)))
+  return((lapply(X, n_distinct)>10) & unlist(lapply(X, is.numeric)))
 }
 
 get_winsorizable_columns <- function(X) {

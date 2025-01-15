@@ -166,73 +166,73 @@ for(dataset in datasets) {
     
     #####
     # LRR
-#    #####
-#    print("LRR")
-#    
-#    tic()
-#    LRR_model <- 
-#      parsnip::logistic_reg(
-#        mode = "classification",
-#        mixture = tune(),
-#        penalty = tune() #change
-#      ) %>%
-#      set_engine("glmnet")
-#    
-#    LRR_wf <- workflow() %>%
-#      add_recipe(LINEAR_recipe) %>%
-#      add_model(LRR_model)
-#
-#
-#    LRR_tuned <- tune::tune_grid(
-#      object = LRR_wf,
-#      resamples = inner_split,
-#      grid = hyperparameters_LR_R_tidy, 
-#      metrics = metrics,
-#      control = tune::control_grid(verbose = TRUE, save_pred = TRUE, parallel_over = "everything")
-#    )
-#    toc()
-#    
-#    best_model_auc <- LRR_tuned %>% select_best(metric="roc_auc")
-#    final_LRR_wf_auc <- LRR_wf %>% finalize_workflow(best_model_auc)
-#    final_LRR_fit_auc <- final_LRR_wf_auc %>% last_fit(folds$splits[[i]], metrics = metrics)
-#
-#    best_model_brier <- LRR_tuned %>% select_best(metric="brier_class")
-#    final_LRR_wf_brier <- LRR_wf %>% finalize_workflow(best_model_brier)
-#    final_LRR_fit_brier <- final_LRR_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
-#    
-#    best_model_pg <- LRR_tuned %>% select_best_pg_LRR()
-#    final_LRR_wf_pg <- LRR_wf %>% finalize_workflow(best_model_pg)
-#    final_LRR_fit_pg <- final_LRR_wf_pg %>% last_fit(folds$splits[[i]], metrics = metrics)
-#
-#    best_model_emp <- LRR_tuned %>% select_best_emp_LRR()
-#    final_LRR_wf_emp <- LRR_wf %>% finalize_workflow(best_model_emp)
-#    final_LRR_fit_emp <- final_LRR_wf_emp %>% last_fit(folds$splits[[i]], metrics = metrics)
-#    
-#    #Save predictions
-#    LRR_predictions_AUC <- final_LRR_fit_auc$.predictions[[1]]$.pred_X1
-#    LRR_predictions_Brier <- final_LRR_fit_brier$.predictions[[1]]$.pred_X1
-#    LRR_predictions_PG <- final_LRR_fit_pg$.predictions[[1]]$.pred_X1
-#    LRR_predictions_EMP <- final_LRR_fit_emp$.predictions[[1]]$.pred_X1
-#    
-#    auc <- final_LRR_fit_auc %>%
-#      collect_metrics() %>%
-#      filter(.metric == "roc_auc") %>%
-#      pull(.estimate)
-#    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "LRR", auc)
-#    
-#    brier <- final_LRR_fit_brier %>%
-#      collect_metrics() %>%
-#      filter(.metric == "brier_class") %>%
-#      pull(.estimate)
-#    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "LRR", brier)
-#
-#    pg <- final_LRR_fit_pg %>%
-#      collect_pg()
-#    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "LRR", pg)
-#    
-#    emp <- final_LRR_fit_pg %>%
-#      collect_emp()
-#    EMP_results[nrow(EMP_results) + 1,] = list(dataset_vector[dataset_counter], i, "LRR", emp)
+    #####
+    print("LRR")
+    
+    tic()
+    LRR_model <- 
+      parsnip::logistic_reg(
+        mode = "classification",
+        mixture = tune(),
+        penalty = tune() #change
+      ) %>%
+      set_engine("glmnet")
+    
+    LRR_wf <- workflow() %>%
+      add_recipe(LINEAR_recipe) %>%
+      add_model(LRR_model)
+
+
+    LRR_tuned <- tune::tune_grid(
+      object = LRR_wf,
+      resamples = inner_split,
+      grid = hyperparameters_LR_R_tidy, 
+      metrics = metrics,
+      control = tune::control_grid(verbose = TRUE, save_pred = TRUE, parallel_over = "everything")
+    )
+    toc()
+    
+    best_model_auc <- LRR_tuned %>% select_best(metric="roc_auc")
+    final_LRR_wf_auc <- LRR_wf %>% finalize_workflow(best_model_auc)
+    final_LRR_fit_auc <- final_LRR_wf_auc %>% last_fit(folds$splits[[i]], metrics = metrics)
+
+    best_model_brier <- LRR_tuned %>% select_best(metric="brier_class")
+    final_LRR_wf_brier <- LRR_wf %>% finalize_workflow(best_model_brier)
+    final_LRR_fit_brier <- final_LRR_wf_brier %>% last_fit(folds$splits[[i]], metrics = metrics)
+    
+    best_model_pg <- LRR_tuned %>% select_best_pg_LRR()
+    final_LRR_wf_pg <- LRR_wf %>% finalize_workflow(best_model_pg)
+    final_LRR_fit_pg <- final_LRR_wf_pg %>% last_fit(folds$splits[[i]], metrics = metrics)
+
+    best_model_emp <- LRR_tuned %>% select_best_emp_LRR()
+    final_LRR_wf_emp <- LRR_wf %>% finalize_workflow(best_model_emp)
+    final_LRR_fit_emp <- final_LRR_wf_emp %>% last_fit(folds$splits[[i]], metrics = metrics)
+    
+    #Save predictions
+    LRR_predictions_AUC <- final_LRR_fit_auc$.predictions[[1]]$.pred_X1
+    LRR_predictions_Brier <- final_LRR_fit_brier$.predictions[[1]]$.pred_X1
+    LRR_predictions_PG <- final_LRR_fit_pg$.predictions[[1]]$.pred_X1
+    LRR_predictions_EMP <- final_LRR_fit_emp$.predictions[[1]]$.pred_X1
+    
+    auc <- final_LRR_fit_auc %>%
+      collect_metrics() %>%
+      filter(.metric == "roc_auc") %>%
+      pull(.estimate)
+    AUC_results[nrow(AUC_results) + 1,] = list(dataset_vector[dataset_counter], i, "LRR", auc)
+    
+    brier <- final_LRR_fit_brier %>%
+      collect_metrics() %>%
+      filter(.metric == "brier_class") %>%
+      pull(.estimate)
+    Brier_results[nrow(Brier_results) + 1,] = list(dataset_vector[dataset_counter], i, "LRR", brier)
+
+    pg <- final_LRR_fit_pg %>%
+      collect_pg()
+    PG_results[nrow(PG_results) + 1,] = list(dataset_vector[dataset_counter], i, "LRR", pg)
+    
+    emp <- final_LRR_fit_pg %>%
+      collect_emp()
+    EMP_results[nrow(EMP_results) + 1,] = list(dataset_vector[dataset_counter], i, "LRR", emp)
     
     #####
     # GAM

@@ -225,6 +225,44 @@ ggplot(combined_results_PG_plot, aes(x = dataset, y = avg_metric, fill = algorit
   scale_fill_manual(values = c15,
                     breaks = setdiff(levels(combined_results_PG_plot$algorithm), c("spacer", "spacer1")))
 
+# EMP plot
+combined_results_EMP_plot <- combined_results_EMP%>%
+  group_by(dataset, algorithm) %>%
+  summarise(avg_metric = round(mean(metric), 3), sd_metric = round(sd(metric), 3)) %>%
+  ungroup() %>%
+  mutate_if(is.numeric, ~scales::number(., accuracy = 0.001))
+
+combined_results_EMP_plot$algorithm <- factor(combined_results_EMP_plot$algorithm, levels = unique(combined_results_EMP$algorithm))
+combined_results_EMP_plot$avg_metric <- as.numeric(combined_results_EMP_plot$avg_metric)
+
+combined_results_EMP_plot <- combined_results_EMP_plot %>%
+  add_row(dataset = unique(combined_results_EMP_plot$dataset),
+          algorithm = "spacer", avg_metric = 0) %>%
+  add_row(dataset = unique(combined_results_EMP_plot$dataset),
+          algorithm = "spacer1", avg_metric = 0)
+
+combined_results_EMP_plot$algorithm <- factor(combined_results_EMP_plot$algorithm,
+                                             levels = c(
+                                               "LRR", "GAM", "LDA", "CTREE", "PLTR", "spacer1", "RF", "XGB", 
+                                               "LGBM", "spacer", "RE_boosting", "RE_RF", "RE_bag",
+                                               "SRE_RF", "SRE_bag", "SRE_boosting", "SRE_PLTR"
+                                             ))
+
+
+
+ggplot(combined_results_EMP_plot, aes(x = dataset, y = avg_metric, fill = algorithm)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8)) +
+  labs(x = "Dataset", y = "EMP", fill = "Model") +
+  coord_cartesian(xlim = c(NA,NA), ylim = (c(0, 0.1))) + 
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    text = element_text(size = 12)
+  ) +
+  scale_fill_manual(values = c15,
+                    breaks = setdiff(levels(combined_results_EMP_plot$algorithm), c("spacer", "spacer1")))
+
+
 ###############
 ###############
 # All comparisons

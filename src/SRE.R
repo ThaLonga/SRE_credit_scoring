@@ -352,10 +352,10 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
     
     ####### 
     # Again, only winsorize numeric features with more than 6 values
-    winsorizable_AUC <- get_splineworthy_columns(SRE_train_AUC)
-    winsorizable_Brier <- get_splineworthy_columns(SRE_train_Brier)
-    winsorizable_PG <- get_splineworthy_columns(SRE_train_PG)
-    winsorizable_EMP <- get_splineworthy_columns(SRE_train_EMP)
+    winsorizable_AUC <- get_winsorizable_columns(SRE_train_AUC)
+    winsorizable_Brier <- get_winsorizable_columns(SRE_train_Brier)
+    winsorizable_PG <- get_winsorizable_columns(SRE_train_PG)
+    winsorizable_EMP <- get_winsorizable_columns(SRE_train_EMP)
     
     #######
     # Manually create Rsample splits again, now with the splines and rules added
@@ -373,42 +373,101 @@ cv.SRE <- function(inner_folds, tree_algorithm, RE_model_AUC, RE_model_Brier, RE
     
     ####### 
     # Create recipes, for AUC, Brier and PG
-    normalizable_AUC <- colnames(training(SRE_split_AUC$splits[[1]])[unlist(lapply(training(SRE_split_AUC$splits[[1]]), function(x) n_distinct(x)>2))])
-    normalizable_Brier <- colnames(training(SRE_split_Brier$splits[[1]])[unlist(lapply(training(SRE_split_Brier$splits[[1]]), function(x) n_distinct(x)>2))])
-    normalizable_PG <- colnames(training(SRE_split_PG$splits[[1]])[unlist(lapply(training(SRE_split_PG$splits[[1]]), function(x) n_distinct(x)>2))])
-    normalizable_EMP <- colnames(training(SRE_split_EMP$splits[[1]])[unlist(lapply(training(SRE_split_EMP$splits[[1]]), function(x) n_distinct(x)>2))])
+#    normalizable_AUC <- colnames(training(SRE_split_AUC$splits[[1]])[unlist(lapply(training(SRE_split_AUC$splits[[1]]), function(x) n_distinct(x)>2))])
+#    normalizable_Brier <- colnames(training(SRE_split_Brier$splits[[1]])[unlist(lapply(training(SRE_split_Brier$splits[[1]]), function(x) n_distinct(x)>2))])
+#    normalizable_PG <- colnames(training(SRE_split_PG$splits[[1]])[unlist(lapply(training(SRE_split_PG$splits[[1]]), function(x) n_distinct(x)>2))])
+#    normalizable_EMP <- colnames(training(SRE_split_EMP$splits[[1]])[unlist(lapply(training(SRE_split_EMP$splits[[1]]), function(x) n_distinct(x)>2))])
+    
     
     SRE_recipe_AUC <- recipe(label~., data = training(SRE_split_AUC$splits[[1]])) %>%
-      step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_AUC$splits[[1]]))[!!winsorizable_AUC]), fraction = 0.025) %>%
-      step_rm(all_of(names(!!training(SRE_split_AUC$splits[[1]]))[!!winsorizable_AUC])) %>%
+      step_hai_winsorized_truncate(
+        all_of(names(!!training(SRE_split_AUC$splits[[1]]))[!!winsorizable_AUC]),
+        -contains("s("),
+        fraction = 0.025) %>%
+      step_rm(
+        all_of(names(!!training(SRE_split_AUC$splits[[1]]))[!!winsorizable_AUC]),
+        -contains("s(")
+      ) %>%
       step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
       step_mutate(across(where(is.logical), as.integer)) %>%
-      step_normalize(all_of(setdiff(!!normalizable_AUC, colnames(!!training(SRE_split_AUC$splits[[1]])[!!winsorizable_AUC])))) %>%
+      step_normalize(contains("winsorized")) %>%
       step_zv()
     
     SRE_recipe_Brier <- recipe(label~., data = training(SRE_split_Brier$splits[[1]])) %>%
-      step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_Brier$splits[[1]]))[!!winsorizable_Brier]), fraction = 0.025) %>%
-      step_rm(all_of(names(!!training(SRE_split_Brier$splits[[1]]))[!!winsorizable_Brier])) %>%
+      step_hai_winsorized_truncate(
+        all_of(names(!!training(SRE_split_Brier$splits[[1]]))[!!winsorizable_Brier]),
+        -contains("s("),
+        fraction = 0.025) %>%
+      step_rm(
+        all_of(names(!!training(SRE_split_Brier$splits[[1]]))[!!winsorizable_Brier]),
+        -contains("s(")
+      ) %>%
       step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
       step_mutate(across(where(is.logical), as.integer)) %>%
-      step_normalize(all_of(setdiff(!!normalizable_Brier, colnames(!!training(SRE_split_Brier$splits[[1]])[!!winsorizable_Brier])))) %>%
+      step_normalize(contains("winsorized")) %>%
       step_zv()
     
     SRE_recipe_PG <- recipe(label~., data = training(SRE_split_PG$splits[[1]])) %>%
-      step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_PG$splits[[1]]))[!!winsorizable_PG]), fraction = 0.025) %>%
-      step_rm(all_of(names(!!training(SRE_split_PG$splits[[1]]))[!!winsorizable_PG])) %>%
+      step_hai_winsorized_truncate(
+        all_of(names(!!training(SRE_split_PG$splits[[1]]))[!!winsorizable_PG]),
+        -contains("s("),
+        fraction = 0.025) %>%
+      step_rm(
+        all_of(names(!!training(SRE_split_PG$splits[[1]]))[!!winsorizable_PG]),
+        -contains("s(")
+      ) %>%
       step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
       step_mutate(across(where(is.logical), as.integer)) %>%
-      step_normalize(all_of(setdiff(!!normalizable_PG, colnames(!!training(SRE_split_PG$splits[[1]])[!!winsorizable_PG])))) %>%
+      step_normalize(contains("winsorized")) %>%
       step_zv()
     
     SRE_recipe_EMP <- recipe(label~., data = training(SRE_split_EMP$splits[[1]])) %>%
-      step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_EMP$splits[[1]]))[!!winsorizable_EMP]), fraction = 0.025) %>%
-      step_rm(all_of(names(!!training(SRE_split_EMP$splits[[1]]))[!!winsorizable_EMP])) %>%
+      step_hai_winsorized_truncate(
+        all_of(names(!!training(SRE_split_EMP$splits[[1]]))[!!winsorizable_EMP]),
+        -contains("s("),
+        fraction = 0.025) %>%
+      step_rm(
+        all_of(names(!!training(SRE_split_EMP$splits[[1]]))[!!winsorizable_EMP]),
+        -contains("s(")
+      ) %>%
       step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
       step_mutate(across(where(is.logical), as.integer)) %>%
-      step_normalize(all_of(setdiff(!!normalizable_EMP, colnames(!!training(SRE_split_EMP$splits[[1]])[!!winsorizable_EMP])))) %>%
+      step_normalize(contains("winsorized")) %>%
       step_zv()
+    
+    
+    
+    #SRE_recipe_AUC <- recipe(label~., data = training(SRE_split_AUC$splits[[1]])) %>%
+    #  step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_AUC$splits[[1]]))[!!winsorizable_AUC]), fraction = 0.025) %>%
+    #  step_rm(all_of(names(!!training(SRE_split_AUC$splits[[1]]))[!!winsorizable_AUC])) %>%
+    #  step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
+    #  step_mutate(across(where(is.logical), as.integer)) %>%
+    #  step_normalize(all_of()) %>%
+    #  step_zv()
+    
+#    SRE_recipe_Brier <- recipe(label~., data = training(SRE_split_Brier$splits[[1]])) %>%
+#      step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_Brier$splits[[1]]))[!!winsorizable_Brier]), fraction = 0.025) %>%
+#      step_rm(all_of(names(!!training(SRE_split_Brier$splits[[1]]))[!!winsorizable_Brier])) %>%
+#      step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
+#      step_mutate(across(where(is.logical), as.integer)) %>%
+#      step_normalize(all_of(setdiff(!!normalizable_Brier, colnames(!!training(SRE_split_Brier$splits[[1]])[!!winsorizable_Brier])))) %>%
+#      step_zv()
+#    
+#    SRE_recipe_PG <- recipe(label~., data = training(SRE_split_PG$splits[[1]])) %>%
+#      step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_PG$splits[[1]]))[!!winsorizable_PG]), fraction = 0.025) %>%
+#      step_rm(all_of(names(!!training(SRE_split_PG$splits[[1]]))[!!winsorizable_PG])) %>%
+#      step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
+#      step_mutate(across(where(is.logical), as.integer)) %>%
+#      step_normalize(all_of(setdiff(!!normalizable_PG, colnames(!!training(SRE_split_PG$splits[[1]])[!!winsorizable_PG])))) %>%
+#      step_zv()
+#    
+#    SRE_recipe_EMP <- recipe(label~., data = training(SRE_split_EMP$splits[[1]])) %>%
+#      step_hai_winsorized_truncate(all_of(names(!!training(SRE_split_EMP$splits[[1]]))[!!winsorizable_EMP]), fraction = 0.025) %>%
+#      step_rm(all_of(names(!!training(SRE_split_EMP$splits[[1]]))[!!winsorizable_EMP])) %>%
+#      step_mutate_at(contains("winsorized"), fn = ~0.4 * ./ sd(.)) %>%
+#      step_mutate(across(where(is.logical), as.integer)) %>%
+#      step_normalize(all_of(setdiff(!!normalizable_EMP, colnames(!!training(SRE_split_EMP$splits[[1]])[!!winsorizable_EMP])))) %>%
+#      step_zv()
     
     
     
