@@ -67,3 +67,48 @@ write_csv(combined_all_AUC, "./results/combined_results_AUC_ORBEL.csv")
 write_csv(combined_all_Brier, "./results/combined_results_Brier_ORBEL.csv")
 write_csv(combined_all_PG, "./results/combined_results_PG_ORBEL.csv")
 write_csv(combined_all_EMP, "./results/combined_results_EMP_ORBEL.csv")
+
+
+combined_results_AUC <- read_csv("./results/combined_results_AUC_ORBEL.csv")
+combined_results_Brier <- read_csv("./results/combined_results_Brier_ORBEL.csv")
+combined_results_PG <- read_csv("./results/combined_results_PG_ORBEL.csv")
+combined_results_EMP <- read_csv("./results/combined_results_EMP_ORBEL.csv")
+
+combined_results_AUC_ReSpline <- loaded_results[names(loaded_results) %>% grep("v2_AUC_ReSpline", .)] %>% 
+  bind_rows() %>%
+  dplyr::select(-...1) %>% 
+  dplyr::filter(algorithm!="XGB")
+
+combined_results_Brier_ReSpline <- loaded_results[names(loaded_results) %>% grep("v2_BRIER_ReSpline", .)] %>% 
+  bind_rows() %>%
+  dplyr::select(-...1)  %>% 
+  dplyr::filter(algorithm!="XGB")
+combined_results_PG_ReSpline <- loaded_results[names(loaded_results) %>% grep("v2_PG_ReSpline", .)] %>% 
+  bind_rows() %>%
+  dplyr::select(-...1)  %>% 
+  dplyr::filter(algorithm!="XGB")
+combined_results_EMP_ReSpline <- loaded_results[names(loaded_results) %>% grep("v2_EMP_ReSpline", .)] %>% 
+  bind_rows() %>%
+  dplyr::select(-...1)  %>% 
+  dplyr::filter(algorithm!="XGB")
+
+combined_all_AUC <- dplyr::left_join(combined_results_AUC, combined_results_AUC_ReSpline, by = c("dataset", "nr_fold", "algorithm"))
+combined_all_Brier <- dplyr::left_join(combined_results_Brier, combined_results_Brier_ReSpline, by = c("dataset", "nr_fold", "algorithm"))
+combined_all_PG <- dplyr::left_join(combined_results_PG, combined_results_PG_ReSpline, by = c("dataset", "nr_fold", "algorithm"))
+combined_all_EMP <- dplyr::left_join(combined_results_EMP, combined_results_EMP_ReSpline, by = c("dataset", "nr_fold", "algorithm"))
+
+combined_all_AUC[!is.na(combined_all_AUC$metric.y),]$metric.x <- combined_all_AUC[!is.na(combined_all_AUC$metric.y),]$metric.y
+combined_all_Brier[!is.na(combined_all_Brier$metric.y),]$metric.x <- combined_all_Brier[!is.na(combined_all_Brier$metric.y),]$metric.y
+combined_all_PG[!is.na(combined_all_PG$metric.y),]$metric.x <- combined_all_PG[!is.na(combined_all_PG$metric.y),]$metric.y
+combined_all_EMP[!is.na(combined_all_EMP$metric.y),]$metric.x <- combined_all_EMP[!is.na(combined_all_EMP$metric.y),]$metric.y
+
+combined_all_AUC <- combined_all_AUC%>%dplyr::select(-metric.y)%>%rename(metric = metric.x)
+combined_all_Brier <- combined_all_Brier%>%dplyr::select(-metric.y)%>%rename(metric = metric.x)
+combined_all_PG <- combined_all_PG%>%dplyr::select(-metric.y)%>%rename(metric = metric.x)
+combined_all_EMP <- combined_all_EMP%>%dplyr::select(-metric.y)%>%rename(metric = metric.x)
+
+write_csv(combined_all_AUC, "./results/combined_results_AUC_ORBEL_ReSpline.csv")
+write_csv(combined_all_Brier, "./results/combined_results_Brier_ORBEL_ReSpline.csv")
+write_csv(combined_all_PG, "./results/combined_results_PG_ORBEL_ReSpline.csv")
+write_csv(combined_all_EMP, "./results/combined_results_EMP_ORBEL_ReSpline.csv")
+
