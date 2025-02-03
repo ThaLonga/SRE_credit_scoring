@@ -105,6 +105,10 @@ finished_EMP_table <- combined_results_EMP_table %>%
 
 kable(rbind(finished_AUC_table, finished_Brier_table, finished_PG_table, finished_EMP_table), "latex", booktabs = T)
 
+# compare (S)RE
+RE_list <- c("RE_boosting", "RE_RF", "RE_bag", "SRE_boosting", "SRE_RF", "SRE_bag")
+
+
 #########################
 # plots for attachments:
 #########################
@@ -450,7 +454,6 @@ table_pvalues_latex <- format_p_values(kable(table_pvalues, "latex", booktabs = 
 ###########################################################################
 # RE -> select best -> compare with interpretable & compare with explainable
 
-RE_list <- c("RE_boosting", "RE_RF", "RE_bag", "SRE_boosting", "SRE_RF", "SRE_bag")
 interpretable_list <- c("LRR", "GAM", "LDA", "CTREE", "PLTR")
 explainable_list <- c("RF", "XGB", "LGBM")
 benchmark_list_AUC_Brier_EMP <- c("LRR", "GAM", "LDA", "CTREE", "RF", "LGBM", "PLTR", "SRE_boosting")
@@ -537,6 +540,10 @@ table_pvalues <- as.tibble(lapply(table_pvalues, function(x) {
 }))
 colnames(table_pvalues) <- c("Algorithm", "AUC", "Brier", "PG", "EMP")
 table_pvalues_latex <- format_p_values(kable(table_pvalues, "latex", booktabs = T))
+colnames(all_avg_ranks) <- c("Algorithm", "AUC", "Brier", "PG", "EMP")
+table_RE_ranks_latex <- (kable(all_avg_ranks, "latex", booktabs = T))
+
+
 
 
 rank_plot <- all_avg_ranks
@@ -572,12 +579,60 @@ ggplot(rank_plot_long, aes(x = reorder_within(Algorithm, Rank, Metric),
   )
 
 
+
+ggplot(rank_plot_long %>% 
+         group_by(Metric) %>% 
+         mutate(is_best = Rank == min(Rank)), 
+       aes(x = Rank, 
+           y = reorder_within(Algorithm, -Rank, Metric))) + # Reverse Rank for ascending order
+  # Add stems with conditional coloring
+  geom_segment(aes(x = 0, 
+                   xend = Rank, 
+                   y = reorder_within(Algorithm, -Rank, Metric), 
+                   yend = reorder_within(Algorithm, -Rank, Metric), 
+                   color = ifelse(is_best, "Best", "Other")), 
+               size = 0.8) +
+  # Add points (remove black edge with color = NA)
+  geom_point(
+    aes(fill = ifelse(is_best, "Best", "Other"),
+        color = ifelse(is_best, "Best", "Other"),
+        size = ifelse(is_best, 3, 3)),
+    shape = 21) +
+  # Facet by Metric to visually group
+  facet_wrap(~ Metric, scales = "free_y", ncol = 2) +
+  # Manual color scales (grey for others, orange for best)
+  scale_fill_manual(values = c("Best" = "orange", "Other" = "grey"), guide = "none") +
+  scale_color_manual(values = c("Best" = "orange", "Other" = "grey"), guide = "none") +
+  # Adjust size for points
+  scale_size_identity() +
+  scale_y_reordered() +
+  
+  # Add labels and theme adjustments
+  labs(x = "", y = "") +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(face = "bold", size = 11) # Make facet titles bold
+  )
+
+
+
+
+
+
+
 #########################
 # SRE vs benchmark
 #########################
 
-friedman_post_AUC <- scmamp::friedmanPost(AUC_prep_rank[-1]%>%select(all_of(benchmark_list_AUC_Brier_PG)), control = "SRE_boosting")
-friedman_post_Brier <- scmamp::friedmanPost(Brier_prep_rank[-1]%>%select(all_of(benchmark_list_AUC_Brier_PG)), control = "SRE_boosting")
+
+friedman_AUC <- average_ranks_AUC %>% filter(algorithm %in% benchmark_list_AUC_Brier_EMP) %>% convert_as_factor(dataset, algorithm)  %>% friedman_test(average_rank ~ algorithm|dataset)
+friedman_Brier <- average_ranks_Brier %>% filter(algorithm %in%benchmark_list_AUC_Brier_EMP) %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
+friedman_PG <- average_ranks_PG %>% filter(algorithm %in%benchmark_list_PG) %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
+friedman_EMP <- average_ranks_EMP %>% filter(algorithm %in%benchmark_list_AUC_Brier_EMP) %>% convert_as_factor(dataset, algorithm) %>% friedman_test(average_rank ~ algorithm|dataset)
+
+
+friedman_post_AUC <- scmamp::friedmanPost(AUC_prep_rank[-1]%>%select(all_of(benchmark_list_AUC_Brier_EMP)), control = "SRE_boosting")
+friedman_post_Brier <- scmamp::friedmanPost(Brier_prep_rank[-1]%>%select(all_of(benchmark_list_AUC_Brier_EMP)), control = "SRE_boosting")
 friedman_post_PG <- scmamp::friedmanPost(PG_prep_rank[-1]%>%select(all_of(benchmark_list_PG)), control = "SRE_RF")
 friedman_post_EMP <- scmamp::friedmanPost(EMP_prep_rank[-1]%>%select(all_of(benchmark_list_AUC_Brier_EMP)), control = "SRE_boosting")
 
@@ -610,10 +665,10 @@ friedman_data_EMP <- combined_results_EMP %>%
 metric_matrix_EMP <- as.matrix(friedman_data_EMP[, -c(1, 2)])
 friedman_result_EMP <- friedman.test(metric_matrix_EMP)
 
-average_ranks_benchmark_AUC <- avg_ranks(combined_results_AUC%>%filter(algorithm %in% benchmark_list_AUC_Brier_PG))
-average_ranks_benchmark_Brier <- avg_ranks(combined_results_Brier%>%filter(algorithm %in% benchmark_list_AUC_Brier_PG), direction = "min")
-average_ranks_benchmark_PG <- avg_ranks(combined_results_PG%>%filter(algorithm %in% benchmark_list_AUC_Brier_PG))
-average_ranks_benchmark_EMP <- avg_ranks(combined_results_EMP%>%filter(algorithm %in% benchmark_list_EMP))
+average_ranks_benchmark_AUC <- avg_ranks(combined_results_AUC%>%filter(algorithm %in% benchmark_list_AUC_Brier_EMP))
+average_ranks_benchmark_Brier <- avg_ranks(combined_results_Brier%>%filter(algorithm %in% benchmark_list_AUC_Brier_EMP), direction = "min")
+average_ranks_benchmark_PG <- avg_ranks(combined_results_PG%>%filter(algorithm %in% benchmark_list_PG))
+average_ranks_benchmark_EMP <- avg_ranks(combined_results_EMP%>%filter(algorithm %in% benchmark_list_AUC_Brier_EMP))
 
 avg_ranks_benchmark_summarized_AUC <- avg_ranks_summarized(average_ranks_benchmark_AUC)
 avg_ranks_benchmark_summarized_Brier <- avg_ranks_summarized(average_ranks_benchmark_Brier)
@@ -653,9 +708,8 @@ table_pvalues <- as.tibble(lapply(table_pvalues, function(x) {
 colnames(table_pvalues) <- c("Algorithm", "AUC", "Brier", "PG", "EMP")
 table_pvalues_latex <- format_p_values(kable(table_pvalues, "latex", booktabs = T))
 
-write_csv(table_pvalues, "./benchmark_orbel.csv")
 rank_plot <- all_avg_ranks_ABE
-rank_plot[is.na(rank_plot)] <- "3.17"
+rank_plot[is.na(rank_plot)] <- "3.44"
 rank_plot <- rank_plot %>% mutate(V2 = as.numeric(V2), V3 = as.numeric(V3), V4 = as.numeric(V4), V5 = as.numeric(V5))
 colnames(rank_plot) <- c("Algorithm", "AUC", "Brier", "PG", "EMP")
 rank_plot[8,1] <- "SRE"
@@ -664,29 +718,61 @@ rank_plot_long <- rank_plot %>%
   group_by(Metric) %>%
   arrange(desc(Rank), .by_group = TRUE)
 
-ggplot(rank_plot_long, aes(x = reorder_within(Algorithm, Rank, Metric), 
-                      y = Rank, 
-                      fill = Algorithm)) +
-  geom_bar(stat = "identity", width = 0.7) +
-  geom_text(aes(label = round(Rank, 2)),  # Add the rank values as labels
-            hjust = 1.3,                # Adjust text vertically (above bars)
-            size = 3,                    # Text size
-            angle = 90) +                # Rotate text vertically
-  facet_wrap(~ Metric, scales = "free_x", ncol = 2) +
-  scale_x_reordered() +  # Automatically adjust x-axis labels for each facet
-  scale_fill_brewer(palette = "Dark2") +  # Choose a color palette
+
+rank_plot_long$Metric[rank_plot_long$Metric=="Brier"] <- "Brier_Score"
+rank_plot_long$Metric[rank_plot_long$Metric=="PG"] <- "Partial Gini"
+
+
+
+
+# benchmark
+ggplot(rank_plot_long %>% 
+         group_by(Metric) %>% 
+         mutate(is_best = Rank == min(Rank)), 
+       aes(x = Rank, 
+           y = reorder_within(Algorithm, -Rank, Metric))) + # Reverse Rank for ascending order
+  # Add stems with conditional coloring
+  geom_segment(aes(x = 0, 
+                   xend = Rank, 
+                   y = reorder_within(Algorithm, -Rank, Metric), 
+                   yend = reorder_within(Algorithm, -Rank, Metric), 
+                   color = case_when(
+                     Algorithm == "SRE" ~ "SRE",
+                     Algorithm == "LRR" ~ "LRR",
+                     TRUE ~ "Other"
+                   )), 
+               size = 0.8) +
+  # Add points (remove black edge with color = NA)
+  geom_point(
+    aes(fill = case_when(
+      Algorithm == "SRE" ~ "SRE",
+      Algorithm == "LRR" ~ "LRR",
+      TRUE ~ "Other"),
+        color = case_when(
+          Algorithm == "SRE" ~ "SRE",
+          Algorithm == "LRR" ~ "LRR",
+          TRUE ~ "Other"
+        ),
+        size = ifelse(is_best, 3, 3)),
+    shape = 21) +
+  # Facet by Metric to visually group
+  facet_wrap(~ Metric, scales = "free_y", ncol = 2) +
+  # Manual color scales (grey for others, orange for best)
+  scale_fill_manual(values = c("SRE" = "orange", "LRR" = "black", "Other" = "grey"), guide = "none") +
+  scale_color_manual(values = c("SRE" = "orange", "LRR" = "black", "Other" = "grey"), guide = "none") +
+  # Adjust size for points
+  scale_size_identity() +
+  scale_y_reordered() +
+  
+  # Add labels and theme adjustments
+  labs(x = "", y = "") +
   theme_minimal() +
   theme(
-    strip.text = element_text(size = 12, face = "bold"),
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    axis.title = element_text(size = 12),
-    legend.position = "none"
-  ) +
-  labs(
-    x = "Algorithm",
-    y = "Rank",
-    title = "Rank of algorithms by metric",
+    strip.text = element_text(face = "bold", size = 11) # Make facet titles bold
   )
+  
+  
+  
 
 
 
@@ -777,38 +863,31 @@ I_table_pvalues_latex <- format_p_values(kable(I_table_pvalues, "latex", booktab
 #######################################################
 # Bayesian signed rank test (Benavoli et al., 2017)
 #######################################################
-AUC_bayes <- perf_mod(AUC_prep_rank %>% select("id", "SRE_boosting", "SRE_RF", "LRR", "LGBM", "RF"),
+AUC_bayes <- perf_mod(AUC_prep_rank %>% select("id", "SRE_boosting", "SRE_RF", "LRR", "LGBM", "RF", "GAM", "CTREE", "PLTR"),
                       iter = 20000,
                       seed = 42)
 
-###############
-
-library(ggplot2)
-library(dplyr)
-
-
-plot_simplex(AUC_SRE_RE%>%filter(contrast=="SRE_boosting vs. LRR"))
-
-########################
 
 
 
+AUC_SRE_LRR <- contrast_models(AUC_bayes, c(rep('SRE_boosting',1)), c("LRR"))
+autoplot(AUC_SRE_LRR, size = 0.01, color = "darkgrey", linewidth=1) + 
+  ggtitle("") + 
+  xlab("") +
+  ylab("") +
+  theme_minimal() 
+kable(summary(AUC_SRE_LRR, size = 0.01) %>% 
+        dplyr::select(contrast, starts_with("pract")), "latex", booktabs = T)
+#RF
+AUC_SRE_RF <- contrast_models(AUC_bayes, c(rep('SRE_boosting',1)), c("RF"))
+autoplot(AUC_SRE_RF, size = 0.01, color = "darkgrey", linewidth=1) + 
+  ggtitle("") + 
+  xlab("") +
+  ylab("") +
+  theme_minimal() 
+kable(summary(AUC_SRE_RF, size = 0.01) %>% 
+        dplyr::select(contrast, starts_with("pract")), "latex", booktabs = T)
 
-
-AUC_SRE_LRR <- contrast_models(AUC_bayes, c(rep('SRE_boosting',2)), c("LRR", "RF"))
-autoplot(AUC_SRE_LRR, size = 0.01) + 
-  ggtitle("Posterior distribution of differences: AUCROC") + 
-  xlab("Difference in AUC (SRE_boosting - alternative)")
-summary(AUC_SRE_LRR, size = 0.01) %>% 
-  dplyr::select(contrast, starts_with("pract"))
-AUC_SRE_LRR <- contrast_models(AUC_bayes, 'SRE', 'LRR')
-autoplot(AUC_SRE_LRR, size = 0.01)
-summary(AUC_SRE_LRR, size = 0.01) %>% 
-  dplyr::select(contrast, starts_with("pract"))
-AUC_RF_LRR <- contrast_models(AUC_bayes, 'RF', 'LRR')
-autoplot(AUC_RF_LRR, size = 0.01)
-summary(AUC_RF_LRR, size = 0.01) %>% 
-  dplyr::select(contrast, starts_with("pract"))
 
 #all
 AUC_contrasts <- contrast_models(AUC_bayes)
@@ -827,6 +906,26 @@ kable(summary(AUC_contrasts, size = 0.01) %>%
 Brier_bayes <- perf_mod(Brier_prep_rank %>% select("id", "SRE_boosting", "SRE_RF", "LRR", "LGBM", "RF"), #NORMALISEREN
                       iter = 20000,
                       seed = 42)
+
+Brier_SRE_LRR <- contrast_models(Brier_bayes, c(rep('SRE_boosting',1)), c("LRR"))
+autoplot(Brier_SRE_LRR, size = 0.0025, color = "dodgerblue", linewidth=1) + 
+  ggtitle("") + 
+  xlab("") +
+  ylab("") +
+  theme_minimal() 
+kable(summary(Brier_SRE_LRR, size = 0.0025) %>% 
+        dplyr::select(contrast, starts_with("pract")), "latex", booktabs = T)
+
+#RF
+Brier_SRE_RF <- contrast_models(Brier_bayes, c(rep('SRE_boosting',1)), c("LGBM"))
+autoplot(Brier_SRE_RF, size = 0.0025, color = "darkgrey", linewidth=1) + 
+  ggtitle("") + 
+  xlab("") +
+  ylab("") +
+  theme_minimal()
+kable(summary(Brier_SRE_RF, size = 0.0025) %>% 
+        dplyr::select(contrast, starts_with("pract")), "latex", booktabs = T)
+
 
 Brier_SRE_LRR <- contrast_models(Brier_bayes, c(rep('SRE_boosting',2)), c("LRR", "LGBM"))
 autoplot(Brier_SRE_LRR, size = 0.0025) + 
@@ -858,10 +957,29 @@ PG_bayes <- perf_mod(PG_prep_rank %>% select("id", "SRE_boosting", "SRE_RF", "LR
                      iter = 20000,
                      seed = 42)
 
-PG_SRE_LRR <- contrast_models(PG_bayes, c(rep('SRE_RF',2)), c("LRR", "LGBM"))
-autoplot(PG_SRE_LRR, size = 0.01) + 
-  ggtitle("Posterior distribution of differences: Partial Gini Index") + 
-  xlab("Difference in PG (SRE_RF - alternative)")
+#LRR
+PG_SRE_LRR <- contrast_models(PG_bayes, c(rep('SRE_RF',1)), c("LRR"))
+autoplot(PG_SRE_LRR, size = 0.01, color = "orangered", linewidth=1) + 
+  ggtitle("") + 
+  xlab("") +
+  ylab("") +
+  theme_minimal() 
+kable(summary(PG_SRE_LRR, size = 0.01) %>% 
+        dplyr::select(contrast, starts_with("pract")), "latex", booktabs = T)
+
+#RF
+PG_SRE_RF <- contrast_models(PG_bayes, c(rep('SRE_RF',1)), c("LGBM"))
+autoplot(PG_SRE_RF, size = 0.01, color = "dodgerblue", linewidth=1) + 
+  ggtitle("") + 
+  xlab("") +
+  ylab("") +
+  theme_minimal()
+kable(summary(PG_SRE_RF, size = 0.01) %>% 
+        dplyr::select(contrast, starts_with("pract")), "latex", booktabs = T)
+
+
+  
+  
 summary(PG_SRE_LRR, size = 0.01) %>% 
         dplyr::select(contrast, starts_with("pract"))
 
@@ -874,6 +992,26 @@ summary(PG_SRE_LRR, size = 0.01) %>%
 EMP_bayes <- perf_mod(EMP_prep_rank %>% select("id", "SRE_boosting", "SRE_RF", "LRR", "LGBM", "RF"),
                      iter = 20000,
                      seed = 42)
+
+EMP_SRE_LRR <- contrast_models(EMP_bayes, c(rep('SRE_boosting',1)), c("LRR"))
+autoplot(EMP_SRE_LRR, size = 0.001, color = "dodgerblue", linewidth=1) + 
+  ggtitle("") + 
+  xlab("") +
+  ylab("") +
+  theme_minimal() 
+kable(summary(EMP_SRE_LRR, size = 0.001) %>% 
+        dplyr::select(contrast, starts_with("pract")), "latex", booktabs = T)
+
+#RF
+EMP_SRE_RF <- contrast_models(EMP_bayes, c(rep('SRE_boosting',1)), c("RF"))
+autoplot(EMP_SRE_RF, size = 0.001, color = "darkgrey", linewidth=1) + 
+  ggtitle("") + 
+  xlab("") +
+  ylab("") +
+  theme_minimal()
+kable(summary(EMP_SRE_RF, size = 0.001) %>% 
+        dplyr::select(contrast, starts_with("pract")), "latex", booktabs = T)
+
 
 EMP_SRE_LRR <- contrast_models(EMP_bayes, c(rep('SRE_boosting',2)), c("LRR", "RF"))
 autoplot(EMP_SRE_LRR, size = 0.001) + 
@@ -1096,17 +1234,17 @@ for(i in 1:length(dataset_sizes)) {
 
 # Compare SRE and LRR
 comparison_AUC <- combined_results_AUC %>%
-  filter(algorithm %in% c("LRR", "SRE")) %>%
+  filter(algorithm %in% c("LRR", "SRE_boosting")) %>%
   spread(key = algorithm, value = metric) %>%
-  mutate(SRE_better_than_LRR = LRR < SRE)
+  mutate(SRE_better_than_LRR = LRR < SRE_boosting)
 comparison_Brier <- combined_results_Brier %>%
-  filter(algorithm %in% c("LRR", "SRE")) %>%
+  filter(algorithm %in% c("LRR", "SRE_boosting")) %>%
   spread(key = algorithm, value = metric) %>%
-  mutate(SRE_better_than_LRR = LRR > SRE)
+  mutate(SRE_better_than_LRR = LRR > SRE_boosting)
 comparison_PG <- combined_results_PG %>%
-  filter(algorithm %in% c("LRR", "SRE")) %>%
+  filter(algorithm %in% c("LRR", "SRE_RF")) %>%
   spread(key = algorithm, value = metric) %>%
-  mutate(SRE_better_than_LRR = LRR < SRE)
+  mutate(SRE_better_than_LRR = LRR < SRE_RF)
 
 basetable_AUC <- comparison_AUC %>%
   dplyr::select(c(size, numeric_cols, nominal_cols, proportion_nominal_cols, nr_cols, prior, SRE_better_than_LRR, cor)) %>%
